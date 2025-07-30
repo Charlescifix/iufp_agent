@@ -33,6 +33,7 @@ numpy>=2.3.2
 # Data processing
 pandas>=2.3.1
 pydantic>=2.11.7
+pydantic-settings>=2.0.0
 pyyaml>=6.0.2
 
 # Text processing and search
