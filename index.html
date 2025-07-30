@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IUFP AI Assistant - Welcome</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #a32940 0%, #8b1e37 50%, #002147 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Animated background elements */
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="rgba(255,255,255,0.02)"/><circle cx="75" cy="75" r="1" fill="rgba(255,255,255,0.02)"/><circle cx="50" cy="10" r="1" fill="rgba(255,255,255,0.01)"/><circle cx="20" cy="80" r="1" fill="rgba(255,255,255,0.01)"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+            animation: float 20s ease-in-out infinite;
+            opacity: 0.3;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-10px) rotate(1deg); }
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Header with large logo */
+        .header {
+            flex: 0 0 auto;
+            padding: 40px 20px 20px;
+            text-align: center;
+            animation: slideDown 1s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo-large {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px 40px;
+            border-radius: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            animation: glow 3s ease-in-out infinite alternate;
+            max-width: 90%;
+            text-align: center;
+        }
+
+        @keyframes glow {
+            from {
+                box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
+            }
+            to {
+                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4), 0 0 30px rgba(255, 255, 255, 0.1);
+            }
+        }
+
+        .logo-large img {
+            max-height: 120px;
+            max-width: 100%;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.1));
+        }
+
+        .logo-large p {
+            font-size: 1.2rem;
+            color: #002147;
+            margin-top: 15px;
+            font-weight: 500;
+            letter-spacing: 2px;
+            opacity: 0.9;
+        }
+
+        /* Main content area */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 40px 20px;
+            text-align: center;
+            animation: fadeInUp 1.2s ease-out;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .welcome-text {
+            margin-bottom: 50px;
+            max-width: 800px;
+        }
+
+        .welcome-text h2 {
+            font-size: 2.5rem;
+            color: white;
+            margin-bottom: 20px;
+            font-weight: 600;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .welcome-text p {
+            font-size: 1.3rem;
+            color: rgba(255, 255, 255, 0.9);
+            line-height: 1.6;
+            font-weight: 300;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Huge ENTER button */
+        .enter-button {
+            position: relative;
+            background: linear-gradient(45deg, #fff, #f8f9fa);
+            color: #a32940;
+            border: none;
+            padding: 40px 80px;
+            font-size: 2.5rem;
+            font-weight: 700;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 
+                0 20px 40px rgba(0, 0, 0, 0.2),
+                0 0 0 0 rgba(255, 255, 255, 0.4);
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            font-family: 'Poppins', sans-serif;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            animation: pulse-button 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-button {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 
+                    0 20px 40px rgba(0, 0, 0, 0.2),
+                    0 0 0 0 rgba(255, 255, 255, 0.4);
+            }
+            50% {
+                transform: scale(1.05);
+                box-shadow: 
+                    0 25px 50px rgba(0, 0, 0, 0.3),
+                    0 0 0 10px rgba(255, 255, 255, 0.1);
+            }
+        }
+
+        .enter-button:hover {
+            transform: translateY(-8px) scale(1.1);
+            box-shadow: 
+                0 30px 60px rgba(0, 0, 0, 0.3),
+                0 0 0 15px rgba(255, 255, 255, 0.1);
+            background: linear-gradient(45deg, #ffffff, #fff);
+            animation: none;
+        }
+
+        .enter-button:active {
+            transform: translateY(-4px) scale(1.08);
+        }
+
+        .enter-button::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: radial-gradient(circle, rgba(163, 41, 64, 0.2) 0%, transparent 70%);
+            transition: all 0.5s ease;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: -1;
+        }
+
+        .enter-button:hover::before {
+            width: 200px;
+            height: 200px;
+        }
+
+        /* Features list */
+        .features {
+            margin-top: 40px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 30px;
+            max-width: 900px;
+        }
+
+        .feature {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            font-weight: 500;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .feature:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-5px);
+        }
+
+        /* Footer with small logo */
+        .footer {
+            flex: 0 0 auto;
+            padding: 20px;
+            text-align: center;
+            animation: slideUp 1.5s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo-small {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 15px;
+            margin-bottom: 10px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            text-align: center;
+        }
+
+        .logo-small img {
+            max-height: 40px;
+            max-width: 120px;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            filter: drop-shadow(1px 1px 2px rgba(0, 0, 0, 0.1));
+        }
+
+        .footer p {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.9rem;
+            margin-top: 10px;
+            font-weight: 300;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .logo-large {
+                padding: 15px 30px;
+            }
+            
+            .logo-large img {
+                max-height: 100px;
+            }
+            
+            .logo-large p {
+                font-size: 1rem;
+                letter-spacing: 1px;
+            }
+            
+            .welcome-text h2 {
+                font-size: 2rem;
+                margin-bottom: 15px;
+            }
+            
+            .welcome-text p {
+                font-size: 1.1rem;
+            }
+            
+            .enter-button {
+                padding: 30px 60px;
+                font-size: 2rem;
+                letter-spacing: 2px;
+            }
+            
+            .features {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .feature {
+                text-align: center;
+                max-width: 300px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .header {
+                padding: 20px 15px 15px;
+            }
+            
+            .logo-large {
+                padding: 15px 25px;
+            }
+            
+            .logo-large img {
+                max-height: 80px;
+            }
+            
+            .welcome-text h2 {
+                font-size: 1.8rem;
+            }
+            
+            .enter-button {
+                padding: 25px 50px;
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header with large IUFP logo -->
+        <header class="header">
+            <div class="logo-large">
+                <img src="iufp_logo.jpg" alt="IUFP Logo">
+                <p>International University Foundation Program</p>
+            </div>
+        </header>
+
+        <!-- Main content -->
+        <main class="main-content">
+            <div class="welcome-text">
+                <h2>AI-Powered Student Assistant</h2>
+                <p>Get instant, intelligent answers about university applications, student visas, program requirements, and more. Your personal guide to higher education success.</p>
+            </div>
+
+            <!-- Huge ENTER button -->
+            <button class="enter-button" onclick="enterChat()">
+                ENTER
+            </button>
+
+            <!-- Features -->
+            <div class="features">
+                <div class="feature">University Applications</div>
+                <div class="feature">Student Visa Guidance</div>
+                <div class="feature">Program Requirements</div>
+                <div class="feature">Personal Statement Help</div>
+                <div class="feature">Financial Requirements</div>
+                <div class="feature">24/7 AI Support</div>
+            </div>
+        </main>
+
+        <!-- Footer with small logo -->
+        <footer class="footer">
+            <div class="logo-small">
+                <img src="athe_logo.png" alt="ATHE Logo">
+            </div>
+            <p>&copy; 2025 International University Foundation Program. Powered by AI.</p>
+        </footer>
+    </div>
+
+    <script>
+        function enterChat() {
+            // Add a smooth transition effect
+            document.body.style.transition = 'opacity 0.5s ease-out';
+            document.body.style.opacity = '0';
+            
+            // Navigate to chat after fade out
+            setTimeout(() => {
+                window.location.href = 'iufp_chat.html';
+            }, 500);
+        }
+
+        // Add some interactive effects
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add floating animation to features
+            const features = document.querySelectorAll('.feature');
+            features.forEach((feature, index) => {
+                feature.style.animationDelay = `${index * 0.1}s`;
+                feature.style.animation = 'fadeInUp 0.8s ease-out forwards';
+            });
+
+            // Add keyboard support
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    enterChat();
+                }
+            });
+        });
+
+        // Add particle effect on button hover
+        document.querySelector('.enter-button').addEventListener('mouseenter', function() {
+            // Create subtle particle effect around button
+            for (let i = 0; i < 5; i++) {
+                setTimeout(() => {
+                    const particle = document.createElement('div');
+                    particle.style.cssText = `
+                        position: absolute;
+                        width: 4px;
+                        height: 4px;
+                        background: rgba(255, 255, 255, 0.8);
+                        border-radius: 50%;
+                        pointer-events: none;
+                        left: ${Math.random() * window.innerWidth}px;
+                        top: ${Math.random() * window.innerHeight}px;
+                        animation: particle-float 2s ease-out forwards;
+                        z-index: 1000;
+                    `;
+                    
+                    document.body.appendChild(particle);
+                    
+                    setTimeout(() => {
+                        particle.remove();
+                    }, 2000);
+                }, i * 100);
+            }
+        });
+
+        // Add CSS for particle animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes particle-float {
+                to {
+                    transform: translateY(-100px);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>
