@@ -83,7 +83,7 @@ class DocumentChunkEntity(Base):
     __table_args__ = (
         Index('idx_document_chunks_document_id', 'document_id'),
         Index('idx_document_chunks_created_at', 'created_at'),
-        Index('idx_document_chunks_embedding_vector', 'embedding', postgresql_using='ivfflat'),
+        # Vector index removed due to 2000 dimension limit - similarity search will use sequential scan
     )
 
 
