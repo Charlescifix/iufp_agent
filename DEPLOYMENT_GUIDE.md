@@ -69,10 +69,10 @@ Document chunks are stored in `document_chunks` table with vector embeddings for
 
 ### Environment Variables Required
 ```
-DATABASE_URL=postgresql://...
-OPENAI_API_KEY=sk-...
-SECRET_KEY=your-secret-key
-ADMIN_API_KEY=your-admin-key
+DATABASE_URL=postgresql://username:password@host:port/database
+OPENAI_API_KEY=your_openai_api_key_here
+SECRET_KEY=generate-secure-random-key-minimum-32-chars
+ADMIN_API_KEY=generate-secure-admin-api-key
 DEBUG=false
 LOG_LEVEL=INFO
 ```

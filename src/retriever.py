@@ -212,13 +212,7 @@ class HybridRetriever:
             with self.vector_store.SessionLocal() as session:
                 from .vectorstore import DocumentChunkEntity
                 
-                results = session.query(
-                    DocumentChunkEntity.chunk_id,
-                    DocumentChunkEntity.document_id,
-                    DocumentChunkEntity.document_name,
-                    DocumentChunkEntity.text,
-                    DocumentChunkEntity.metadata
-                ).all()
+                results = session.query(DocumentChunkEntity).all()
                 
                 if not results:
                     self.logger.warning("No documents found for BM25 indexing")

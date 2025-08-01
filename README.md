@@ -52,14 +52,14 @@ A production-ready RAG (Retrieval-Augmented Generation) chatbot system for the I
 Copy the `.env` file and configure your credentials:
 
 ```bash
-# AWS S3 Configuration
+# AWS S3 Configuration (Optional - for cloud document storage)
 AWS_ACCESS_KEY_ID=your_aws_access_key_here
 AWS_SECRET_ACCESS_KEY=your_aws_secret_key_here
 AWS_REGION=eu-west-2
-S3_BUCKET_NAME=iufp-knowledge-base
+S3_BUCKET_NAME=your-knowledge-base-bucket
 
 # PostgreSQL + pgvector Configuration  
-DATABASE_URL=postgresql://username:password@host:port/database
+DATABASE_URL=postgresql://username:password@host:port/database_name
 
 # OpenAI API Configuration
 OPENAI_API_KEY=your_openai_api_key_here
@@ -67,8 +67,8 @@ EMBEDDING_MODEL=text-embedding-3-large
 CHAT_MODEL=gpt-4-turbo
 
 # Security Configuration
-SECRET_KEY=your-very-long-random-secret-key-here-minimum-32-chars
-ADMIN_API_KEY=your-admin-api-key-here
+SECRET_KEY=generate-a-secure-random-key-minimum-32-characters-long
+ADMIN_API_KEY=generate-a-secure-admin-api-key
 ```
 
 ### 2. Install Dependencies
@@ -88,6 +88,14 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 ### 4. Document Ingestion
 
+**Option 1: Using the quickstart script (Recommended)**
+```bash
+# Place PDF files in data/raw/ directory
+# Then run the ingestion command
+python quickstart.py ingest
+```
+
+**Option 2: Programmatic ingestion**
 ```python
 import asyncio
 from src.ingestion import sync_s3_documents
@@ -96,10 +104,10 @@ from src.embedder import embed_document_chunks
 from src.vectorstore import store_document_with_embeddings
 
 async def ingest_documents():
-    # 1. Download PDFs from S3
-    files = await sync_s3_documents()
+    # 1. Download PDFs from S3 (optional)
+    # files = await sync_s3_documents()
     
-    # 2. Process documents into chunks
+    # 2. Process documents into chunks (from data/raw/)
     chunks = await process_all_documents()
     
     # 3. Create embeddings
@@ -128,7 +136,7 @@ python -m uvicorn src.chat_api:app --host 0.0.0.0 --port 8000 --workers 4
 
 ```bash
 curl -X POST "http://localhost:8000/chat" \
-  -H "X-API-Key: your-admin-api-key-here" \
+  -H "X-API-Key: your-admin-api-key" \
   -H "Content-Type: application/json" \
   -d '{
     "message": "What are the IUFP certification requirements?",
@@ -167,14 +175,14 @@ curl "http://localhost:8000/health"
 
 ```bash
 curl "http://localhost:8000/stats" \
-  -H "X-API-Key: your-admin-api-key-here"
+  -H "X-API-Key: your-admin-api-key"
 ```
 
 ### Chat History
 
 ```bash
 curl "http://localhost:8000/chat/history/session-id" \
-  -H "X-API-Key: your-admin-api-key-here"
+  -H "X-API-Key: your-admin-api-key"
 ```
 
 ## Configuration Options

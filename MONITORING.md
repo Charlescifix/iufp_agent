@@ -44,7 +44,7 @@ railway logs --follow
 
 #### Check Health Status:
 ```
-GET https://iufp.up.railway.app/health
+GET https://your-deployed-app.up.railway.app/health
 ```
 
 ### Performance Metrics
