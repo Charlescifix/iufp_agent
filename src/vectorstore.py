@@ -119,15 +119,21 @@ class PostgreSQLVectorStore:
         """Validate PostgreSQL configuration"""
         log_function_call(self.logger, "_validate_configuration")
         
+        # If DATABASE_URL is not set, try to construct from Railway variables
         if not settings.database_url:
-            error = VectorStoreSecurityError("Database URL not configured")
-            log_security_event(
-                "missing_database_url",
-                {"service": "PostgreSQLVectorStore"},
-                "ERROR"
-            )
-            log_function_result(self.logger, "_validate_configuration", error=error)
-            raise error
+            if settings.pghost and settings.pgdatabase and settings.pguser and settings.pgpassword:
+                constructed_url = f"postgresql://{settings.pguser}:{settings.pgpassword}@{settings.pghost}:{settings.pgport}/{settings.pgdatabase}"
+                settings.database_url = constructed_url
+                self.logger.info("Constructed database URL from Railway environment variables")
+            else:
+                error = VectorStoreSecurityError("Database URL not configured and Railway variables not available")
+                log_security_event(
+                    "missing_database_url",
+                    {"service": "PostgreSQLVectorStore"},
+                    "ERROR"
+                )
+                log_function_result(self.logger, "_validate_configuration", error=error)
+                raise error
         
         # Validate database URL format
         if not settings.database_url.startswith('postgresql://'):

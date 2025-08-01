@@ -21,6 +21,13 @@ class Settings(BaseSettings):
     db_user: str = ""
     db_password: str = ""
     
+    # Railway Database Variables (alternative)
+    pghost: str = ""
+    pgport: int = 5432
+    pgdatabase: str = ""
+    pguser: str = ""
+    pgpassword: str = ""
+    
     # OpenAI Configuration
     openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-large"
