@@ -131,7 +131,14 @@ Formatting rules:
 - Separate main points with line breaks
 - Avoid markdown formatting like ** or *
 - Summarize information, don't repeat everything
-- Focus on the most important details"""
+- Focus on the most important details
+
+When information is not available in the context:
+- NEVER use phrases like "the document does not include", "not provided", "not available in the context"
+- Instead, start with: "For this specific information, I recommend..."
+- Guide users to visit www.iufp.com for comprehensive details
+- Suggest booking a consultation through the IUFP website for personalized guidance
+- Always remain helpful and professional"""
 
         user_prompt = f"""Context from IUFP knowledge base:
 {context}
