@@ -119,10 +119,21 @@ class PostgreSQLVectorStore:
         """Validate PostgreSQL configuration"""
         log_function_call(self.logger, "_validate_configuration")
         
+        # Clean DATABASE_URL and Railway variables of whitespace
+        if settings.database_url:
+            settings.database_url = settings.database_url.strip()
+        
         # If DATABASE_URL is not set, try to construct from Railway variables
         if not settings.database_url:
             if settings.pghost and settings.pgdatabase and settings.pguser and settings.pgpassword:
-                constructed_url = f"postgresql://{settings.pguser}:{settings.pgpassword}@{settings.pghost}:{settings.pgport}/{settings.pgdatabase}"
+                # Clean all Railway variables of whitespace/newlines
+                pghost = settings.pghost.strip()
+                pgdatabase = settings.pgdatabase.strip() 
+                pguser = settings.pguser.strip()
+                pgpassword = settings.pgpassword.strip()
+                pgport = settings.pgport
+                
+                constructed_url = f"postgresql://{pguser}:{pgpassword}@{pghost}:{pgport}/{pgdatabase}"
                 settings.database_url = constructed_url
                 self.logger.info("Constructed database URL from Railway environment variables")
             else:
