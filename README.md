@@ -1,6 +1,6 @@
 # IUFP RAG Chat API
 
-A production-ready RAG (Retrieval-Augmented Generation) chatbot system for the International Union of Financial Professionals, featuring enterprise-grade security, hybrid search, and comprehensive logging.
+A production-ready RAG (Retrieval-Augmented Generation) chatbot system for the International University Foundation Programme, featuring enterprise-grade security, hybrid search, and comprehensive logging.
 
 ## Architecture Overview
 
