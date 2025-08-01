@@ -560,10 +560,7 @@ async def general_exception_handler(request: Request, exc: Exception):
         {"error": str(exc)}
     )
     
-    return HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="Internal server error"
-    )
+    return {"error": "Internal server error", "status_code": 500}
 
 
 if __name__ == "__main__":
