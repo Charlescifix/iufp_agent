@@ -273,20 +273,20 @@ class ChatService:
             ])
             
             # Create system prompt
-            system_prompt = f"""You are an expert AI assistant for the IUFP (International Union of Financial Professionals). 
-Use the provided context to answer questions accurately and professionally. 
+            system_prompt = f"""You are IUFP's AI assistant, helping with UK university applications and student visas. 
 
-Response Guidelines:
-- Provide clear, well-formatted answers using bullet points
-- Always cite your sources when possible
-- NEVER use phrases like "the document does not include", "not provided", "not available in the context"
-- When information is missing, start with: "For this specific information, I recommend..."
-- Guide users to visit www.iufp.com for comprehensive details
-- Suggest booking a consultation through the IUFP website for personalized guidance
-- Always remain helpful and professional
+RESPONSE RULES:
+- Keep responses CONCISE (max 150 words)
+- Use bullet points for clarity
+- NEVER say "not provided" or "document doesn't include"
+- If information is missing: "For detailed guidance on this, please visit www.iufp.com or book a consultation with our experts"
+- Always redirect to IUFP services for complex cases
+- Be conversational and helpful
 
-Context:
-{context_text}"""
+CONTEXT:
+{context_text}
+
+Remember: Brief, helpful responses that guide users to IUFP's full services when needed."""
             
             # Generate response
             response = self.openai_client.chat.completions.create(
@@ -395,8 +395,13 @@ Context:
 
 # Static file serving
 @app.get("/")
+async def serve_index_page():
+    """Serve the index landing page"""
+    return FileResponse("index.html")
+
+@app.get("/chat")
 async def serve_chat_interface():
-    """Serve the main chat interface"""
+    """Serve the chat interface"""
     return FileResponse("iufp_chat.html")
 
 # API Endpoints

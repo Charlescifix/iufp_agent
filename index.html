@@ -152,6 +152,44 @@
             text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
         }
 
+        /* Disclaimer Box */
+        .disclaimer-box {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 215, 0, 0.3);
+            border-radius: 15px;
+            padding: 25px;
+            margin: 30px 0;
+            max-width: 700px;
+            text-align: left;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .disclaimer-box h3 {
+            color: #ffd700;
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .disclaimer-content p {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 12px;
+            font-weight: 400;
+        }
+
+        .disclaimer-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        .disclaimer-content strong {
+            color: #ffd700;
+            font-weight: 600;
+        }
+
         /* Huge ENTER button */
         .enter-button {
             position: relative;
@@ -373,23 +411,34 @@
         <!-- Main content -->
         <main class="main-content">
             <div class="welcome-text">
-                <h2>AI-Powered Student Assistant</h2>
-                <p>Get instant, intelligent answers about university applications, student visas, program requirements, and more. Your personal guide to higher education success.</p>
+                <h2>IUFP AI Assistant - Testing Phase</h2>
+                <p>Get instant, intelligent answers about UK university applications, student visas, and immigration guidance from IUFP's comprehensive knowledge base.</p>
+            </div>
+
+            <!-- Disclaimer Section -->
+            <div class="disclaimer-box">
+                <h3>⚠️ Important Disclaimer</h3>
+                <div class="disclaimer-content">
+                    <p><strong>Testing Phase:</strong> This AI assistant is currently in testing and will be integrated into IUFP's main website upon completion.</p>
+                    <p><strong>AI Limitations:</strong> This chatbot provides guidance based on IUFP's knowledge base but should not replace professional consultation.</p>
+                    <p><strong>Privacy:</strong> Conversations are logged for service improvement. Avoid sharing sensitive personal information.</p>
+                    <p><strong>Professional Advice:</strong> For complex cases or personalized guidance, please visit <strong>www.iufp.com</strong> or book a consultation with our experts.</p>
+                </div>
             </div>
 
             <!-- Huge ENTER button -->
             <button class="enter-button" onclick="enterChat()">
-                ENTER
+                ENTER CHAT
             </button>
 
             <!-- Features -->
             <div class="features">
                 <div class="feature">University Applications</div>
                 <div class="feature">Student Visa Guidance</div>
-                <div class="feature">Program Requirements</div>
-                <div class="feature">Personal Statement Help</div>
                 <div class="feature">Financial Requirements</div>
-                <div class="feature">24/7 AI Support</div>
+                <div class="feature">Personal Statement Help</div>
+                <div class="feature">Immigration Support</div>
+                <div class="feature">IUFP Knowledge Base</div>
             </div>
         </main>
 
@@ -410,7 +459,7 @@
             
             // Navigate to chat after fade out
             setTimeout(() => {
-                window.location.href = 'iufp_chat.html';
+                window.location.href = '/chat';
             }, 500);
         }
 

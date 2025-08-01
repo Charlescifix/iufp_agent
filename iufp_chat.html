@@ -376,7 +376,10 @@
     </div>
 
     <script>
-        const API_BASE_URL = 'http://localhost:8000';
+        // Use current domain for deployed version, localhost for development
+        const API_BASE_URL = window.location.hostname === 'localhost' ? 
+            'http://localhost:8000' : 
+            window.location.origin;
         
         function handleKeyPress(event) {
             if (event.key === 'Enter') {
@@ -440,7 +443,7 @@
                 
             } catch (error) {
                 hideTypingIndicator();
-                addMessage('Sorry, I encountered an error. Please make sure the IUFP API server is running on localhost:8000.', 'bot');
+                addMessage('Sorry, I encountered an error connecting to the IUFP AI service. Please try again in a moment, or visit www.iufp.com for direct assistance.', 'bot');
                 console.error('Chat error:', error);
             }
             
