@@ -19,6 +19,8 @@ try:
     PGVECTOR_AVAILABLE = True
 except ImportError:
     PGVECTOR_AVAILABLE = False
+    # Fallback: use PostgreSQL arrays for vectors
+    from sqlalchemy import ARRAY, Float
 import numpy as np
 
 from .config import settings
