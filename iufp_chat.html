@@ -54,6 +54,20 @@
             color: #002147;
             font-size: 18px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .logo:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .logo img {
+            width: 50px;
+            height: 50px;
+            border-radius: 10px;
+            object-fit: contain;
         }
 
         .header-text {
@@ -340,7 +354,9 @@
 <body>
     <div class="chat-container">
         <div class="header">
-            <div class="logo">IUFP</div>
+            <div class="logo" onclick="goHome()">
+                <img src="/static/iufp_logo.jpg" alt="IUFP Logo">
+            </div>
             <div class="header-text">
                 <h1>IUFP AI Assistant</h1>
                 <p>Get instant answers about university applications, student visas, and IUFP programs</p>
@@ -543,6 +559,11 @@
             if (typingIndicator) {
                 typingIndicator.remove();
             }
+        }
+
+        // Navigation function
+        function goHome() {
+            window.location.href = '/';
         }
 
         // Focus on input when page loads

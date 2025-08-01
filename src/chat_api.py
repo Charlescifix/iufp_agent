@@ -271,7 +271,7 @@ class ChatService:
             context_text = "\n\n".join([
                 f"Source: {chunk.document_name}\n{chunk.text}"
                 for chunk in context_chunks[:5]  # Limit context
-            ])
+            ]) if context_chunks else "No specific context available - provide general IUFP guidance."
             
             # Create system prompt
             system_prompt = f"""You are IUFP's AI assistant, helping with UK university applications and student visas. 
@@ -336,9 +336,15 @@ Remember: Brief, helpful responses that guide users to IUFP's full services when
                 bm25_weight=0.3
             )
             
-            search_results = await self.retriever.search(request.message, retrieval_config)
+            search_results = []
+            try:
+                search_results = await self.retriever.search(request.message, retrieval_config)
+                self.logger.info(f"Retrieved {len(search_results)} search results")
+            except Exception as search_error:
+                self.logger.warning(f"Search failed, using fallback: {str(search_error)}")
+                # Continue with empty search results for fallback response
             
-            # Generate response
+            # Generate response (works with empty search results too)
             response_text = await self.generate_response(request.message, search_results)
             
             # Create source citations
@@ -440,14 +446,23 @@ async def chat_endpoint(
         return response
         
     except Exception as e:
-        # Log error
+        # Log detailed error for debugging
+        import traceback
+        error_trace = traceback.format_exc()
+        
+        logger.error(
+            "Chat request failed with detailed trace",
+            client_ip=client_ip,
+            error=str(e),
+            error_type=type(e).__name__,
+            error_trace=error_trace
+        )
+        
         security_manager.log_security_event(
             "chat_request_failed",
             request,
-            {"error": str(e), "message_preview": request_data.message[:100]}
+            {"error": str(e), "error_type": type(e).__name__, "message_preview": request_data.message[:100]}
         )
-        
-        logger.error("Chat request failed", client_ip=client_ip, error=str(e))
         
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
