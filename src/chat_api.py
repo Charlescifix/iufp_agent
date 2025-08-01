@@ -12,7 +12,8 @@ from fastapi import FastAPI, HTTPException, Depends, Request, Security, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -393,6 +394,9 @@ Remember: Brief, helpful responses that guide users to IUFP's full services when
             raise
 
 
+# Static file serving for images and assets
+app.mount("/static", StaticFiles(directory="."), name="static")
+
 # Static file serving
 @app.get("/")
 async def serve_index_page():
@@ -409,8 +413,7 @@ async def serve_chat_interface():
 @security_manager.limiter.limit(f"{settings.rate_limit_requests}/{settings.rate_limit_period}second")
 async def chat_endpoint(
     request_data: ChatRequest,
-    request: Request,
-    api_key: str = Depends(get_api_key)
+    request: Request
 ):
     """Main chat endpoint with security and rate limiting"""
     client_ip = get_remote_address(request)
@@ -563,7 +566,10 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             {"status_code": exc.status_code, "detail": exc.detail}
         )
     
-    return {"error": exc.detail, "status_code": exc.status_code}
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.detail, "status_code": exc.status_code}
+    )
 
 
 @app.exception_handler(Exception)
@@ -579,7 +585,10 @@ async def general_exception_handler(request: Request, exc: Exception):
         {"error": str(exc)}
     )
     
-    return {"error": "Internal server error", "status_code": 500}
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error", "status_code": 500}
+    )
 
 
 if __name__ == "__main__":
