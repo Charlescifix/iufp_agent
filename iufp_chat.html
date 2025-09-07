@@ -1,4 +1,20 @@
 <!DOCTYPE html>
+<!--
+IUFP Chat Widget - Optimized for embedding in websites
+
+Usage:
+1. As standalone page: Access directly via URL
+2. As widget: Add ?widget=true to URL or embed in iframe
+3. Programmatic: Call enableWidgetMode() from parent window
+
+Widget dimensions:
+- Mobile: 400px height
+- Tablet: 450px height  
+- Desktop: 520px height
+- Max width: 420px on large screens
+
+Responsive breakpoints: 480px, 768px, 1200px
+-->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -18,10 +34,29 @@
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Widget-specific styles */
+        .widget-mode {
+            background: transparent;
+            min-height: auto;
+            padding: 0;
+        }
+
+        .widget-mode .chat-container {
+            max-width: 100%;
+            height: 500px;
+            min-height: 400px;
+            margin: 0;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
         }
 
         .chat-container {
-            max-width: 1200px;
+            max-width: 800px;
+            width: 100%;
             margin: 0 auto;
             height: 100vh;
             display: flex;
@@ -30,32 +65,46 @@
             border-radius: 20px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
             overflow: hidden;
+            position: relative;
         }
 
         .header {
             background: linear-gradient(90deg, #002147, #a32940);
-            padding: 20px 30px;
+            padding: 15px 20px;
             color: white;
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 12px;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            min-height: 70px;
+        }
+
+        .widget-mode .header {
+            padding: 12px 16px;
+            min-height: 60px;
         }
 
         .logo {
-            width: 60px;
-            height: 60px;
+            width: 50px;
+            height: 50px;
             background: white;
-            border-radius: 15px;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 700;
             color: #002147;
-            font-size: 18px;
+            font-size: 16px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
             cursor: pointer;
             transition: all 0.3s ease;
+            flex-shrink: 0;
+        }
+
+        .widget-mode .logo {
+            width: 40px;
+            height: 40px;
+            font-size: 14px;
         }
 
         .logo:hover {
@@ -64,10 +113,15 @@
         }
 
         .logo img {
-            width: 50px;
-            height: 50px;
-            border-radius: 10px;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
             object-fit: contain;
+        }
+
+        .widget-mode .logo img {
+            width: 32px;
+            height: 32px;
         }
 
         .header-text {
@@ -75,15 +129,27 @@
         }
 
         .header h1 {
-            font-size: 28px;
+            font-size: 22px;
             font-weight: 600;
-            margin-bottom: 5px;
+            margin-bottom: 2px;
+            line-height: 1.2;
+        }
+
+        .widget-mode .header h1 {
+            font-size: 18px;
+            margin-bottom: 0;
         }
 
         .header p {
-            font-size: 16px;
+            font-size: 14px;
             opacity: 0.9;
             font-weight: 300;
+            line-height: 1.3;
+        }
+
+        .widget-mode .header p {
+            font-size: 12px;
+            display: none;
         }
 
         .status {
@@ -110,9 +176,14 @@
 
         .chat-messages {
             flex: 1;
-            padding: 30px;
+            padding: 20px;
             overflow-y: auto;
             background: #f8fafc;
+            min-height: 0;
+        }
+
+        .widget-mode .chat-messages {
+            padding: 15px;
         }
 
         .message {
@@ -162,11 +233,13 @@
 
         .message-content {
             max-width: 70%;
-            padding: 15px 20px;
-            border-radius: 20px;
+            padding: 15px 18px;
+            border-radius: 18px;
             font-size: 15px;
             line-height: 1.5;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            word-wrap: break-word;
+            overflow-wrap: break-word;
         }
 
         .message.user .message-content {
@@ -196,12 +269,18 @@
         }
 
         .input-container {
-            padding: 25px 30px;
+            padding: 20px;
             background: white;
             border-top: 1px solid #e2e8f0;
             display: flex;
-            gap: 15px;
+            gap: 12px;
             align-items: center;
+            flex-shrink: 0;
+        }
+
+        .widget-mode .input-container {
+            padding: 15px;
+            gap: 10px;
         }
 
         .input-wrapper {
@@ -211,13 +290,15 @@
 
         #messageInput {
             width: 100%;
-            padding: 15px 20px;
+            padding: 15px 18px;
             border: 2px solid #e2e8f0;
-            border-radius: 25px;
-            font-size: 16px;
+            border-radius: 22px;
+            font-size: 15px;
             font-family: 'Poppins', sans-serif;
             outline: none;
             transition: all 0.3s ease;
+            resize: none;
+            min-height: 44px;
         }
 
         #messageInput:focus {
@@ -229,16 +310,17 @@
             background: linear-gradient(135deg, #a32940, #d63384);
             color: white;
             border: none;
-            width: 50px;
-            height: 50px;
+            width: 46px;
+            height: 46px;
             border-radius: 50%;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 18px;
+            font-size: 17px;
             transition: all 0.3s ease;
             box-shadow: 0 4px 15px rgba(163, 41, 64, 0.3);
+            flex-shrink: 0;
         }
 
         #sendButton:hover {
@@ -282,38 +364,63 @@
 
         .welcome-message {
             text-align: center;
-            padding: 40px 20px;
+            padding: 30px 20px;
             color: #64748b;
+        }
+        
+        .widget-mode .welcome-message {
+            padding: 20px 15px;
         }
 
         .welcome-message h2 {
             color: #002147;
-            margin-bottom: 10px;
-            font-size: 24px;
+            margin-bottom: 8px;
+            font-size: 22px;
+        }
+        
+        .widget-mode .welcome-message h2 {
+            font-size: 18px;
+            margin-bottom: 6px;
         }
 
         .welcome-message p {
-            font-size: 16px;
-            line-height: 1.6;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+        
+        .widget-mode .welcome-message p {
+            font-size: 13px;
+            line-height: 1.4;
         }
 
         .quick-questions {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 8px;
             justify-content: center;
-            margin-top: 20px;
+            margin-top: 16px;
+        }
+        
+        .widget-mode .quick-questions {
+            gap: 6px;
+            margin-top: 12px;
         }
 
         .quick-question {
             background: white;
             border: 2px solid #e2e8f0;
-            padding: 10px 16px;
-            border-radius: 20px;
+            padding: 8px 14px;
+            border-radius: 16px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 13px;
             transition: all 0.3s ease;
             color: #64748b;
+        }
+        
+        .widget-mode .quick-question {
+            padding: 6px 12px;
+            font-size: 12px;
+            border-radius: 14px;
         }
 
         .quick-question:hover {
@@ -323,36 +430,160 @@
             box-shadow: 0 4px 15px rgba(163, 41, 64, 0.1);
         }
 
-        @media (max-width: 768px) {
+        /* Mobile First - Small screens (320px and up) */
+        @media (max-width: 480px) {
             .chat-container {
                 border-radius: 0;
                 height: 100vh;
+                max-width: 100%;
+            }
+            
+            .widget-mode .chat-container {
+                height: 450px;
+                border-radius: 8px;
             }
             
             .header {
-                padding: 15px 20px;
+                padding: 12px 15px;
+                min-height: 55px;
             }
             
             .header h1 {
-                font-size: 24px;
+                font-size: 18px;
+            }
+            
+            .header p {
+                display: none;
+            }
+            
+            .logo {
+                width: 35px;
+                height: 35px;
+                font-size: 12px;
+            }
+            
+            .logo img {
+                width: 28px;
+                height: 28px;
             }
             
             .chat-messages {
-                padding: 20px;
+                padding: 15px 12px;
             }
             
             .message-content {
-                max-width: 85%;
+                max-width: 90%;
+                font-size: 14px;
+                padding: 12px 16px;
+            }
+            
+            .message-avatar {
+                width: 32px;
+                height: 32px;
+                font-size: 12px;
             }
             
             .input-container {
-                padding: 20px;
+                padding: 15px 12px;
+                gap: 8px;
+            }
+            
+            #messageInput {
+                padding: 12px 16px;
+                font-size: 14px;
+            }
+            
+            #sendButton {
+                width: 40px;
+                height: 40px;
+                font-size: 16px;
+            }
+            
+            .quick-questions {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .quick-question {
+                width: 100%;
+                max-width: 280px;
+                text-align: center;
+            }
+        }
+        
+        /* Tablet - Medium screens (481px to 768px) */
+        @media (min-width: 481px) and (max-width: 768px) {
+            .chat-container {
+                max-width: 100%;
+                border-radius: 12px;
+                margin: 10px;
+                height: calc(100vh - 20px);
+            }
+            
+            .widget-mode .chat-container {
+                height: 480px;
+                margin: 0;
+            }
+            
+            .header {
+                padding: 14px 18px;
+            }
+            
+            .header h1 {
+                font-size: 20px;
+            }
+            
+            .chat-messages {
+                padding: 18px;
+            }
+            
+            .message-content {
+                max-width: 80%;
+            }
+            
+            .input-container {
+                padding: 18px;
+            }
+        }
+        
+        /* Desktop - Large screens (769px and up) */
+        @media (min-width: 769px) {
+            .widget-mode .chat-container {
+                max-width: 400px;
+                height: 520px;
+            }
+        }
+        
+        /* Extra large screens */
+        @media (min-width: 1200px) {
+            .chat-container {
+                max-width: 900px;
+            }
+            
+            .widget-mode .chat-container {
+                max-width: 420px;
+                height: 550px;
+            }
+        }
+        
+        /* Landscape orientation adjustments */
+        @media (orientation: landscape) and (max-height: 600px) {
+            .header p {
+                display: none;
+            }
+            
+            .welcome-message {
+                padding: 20px 15px;
+            }
+            
+            .welcome-message h2 {
+                font-size: 20px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="chat-container">
+    <div class="chat-container" id="chatContainer">
         <div class="header">
             <div class="logo" onclick="goHome()">
                 <img src="/static/iufp_logo.jpg" alt="IUFP Logo">
@@ -398,8 +629,12 @@
             window.location.origin;
         
         function handleKeyPress(event) {
-            if (event.key === 'Enter') {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
                 sendMessage();
+            } else if (event.key === 'Enter' && event.shiftKey) {
+                // Allow new line with Shift+Enter
+                return;
             }
         }
 
@@ -566,9 +801,71 @@
             window.location.href = '/';
         }
 
+        // Widget mode functionality
+        function enableWidgetMode() {
+            document.body.classList.add('widget-mode');
+            const container = document.getElementById('chatContainer');
+            container.classList.add('widget-mode');
+            
+            // Adjust height for smaller screens
+            if (window.innerWidth <= 480) {
+                container.style.height = '400px';
+            } else if (window.innerWidth <= 768) {
+                container.style.height = '450px';
+            }
+        }
+        
+        function disableWidgetMode() {
+            document.body.classList.remove('widget-mode');
+            const container = document.getElementById('chatContainer');
+            container.classList.remove('widget-mode');
+            container.style.height = '';
+        }
+        
+        // Auto-resize input for better UX
+        function autoResizeInput() {
+            const input = document.getElementById('messageInput');
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+        }
+        
+        // Detect if running in widget mode (can be called from parent page)
+        function initializeWidget() {
+            // Check if we're in an iframe or have widget parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const isInIframe = window !== window.top;
+            const hasWidgetParam = urlParams.has('widget') || urlParams.get('mode') === 'widget';
+            
+            if (isInIframe || hasWidgetParam) {
+                enableWidgetMode();
+            }
+        }
+        
+        // Enhanced responsive handling
+        function handleResize() {
+            const container = document.getElementById('chatContainer');
+            if (document.body.classList.contains('widget-mode')) {
+                if (window.innerWidth <= 480) {
+                    container.style.height = '400px';
+                } else if (window.innerWidth <= 768) {
+                    container.style.height = '450px';
+                } else {
+                    container.style.height = '520px';
+                }
+            }
+        }
+        
         // Focus on input when page loads
         window.onload = function() {
+            initializeWidget();
             document.getElementById('messageInput').focus();
+            
+            // Add input auto-resize
+            const messageInput = document.getElementById('messageInput');
+            messageInput.addEventListener('input', autoResizeInput);
+            
+            // Add resize listener
+            window.addEventListener('resize', handleResize);
         };
     </script>
 </body>
