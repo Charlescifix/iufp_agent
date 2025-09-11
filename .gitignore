@@ -155,3 +155,10 @@ experiments/
 # Test files (temporary development files)
 test_*.py
 check_*.py
+
+# Analysis reports and chat logs (may contain sensitive data)
+*_Analysis_Report.md
+chat_logs_*.json
+
+# System error files
+nul
