@@ -1,0 +1,61 @@
+# Version control
+.git
+.gitignore
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Documentation
+README.md
+DEPLOYMENT_GUIDE.md
+*_Analysis_Report.md
+
+# Chat logs and sensitive data
+chat_logs_*.json
+data/
+
+# Development files
+requirements.txt
+docker-compose.yml
+.railway/
+
+# Testing
+pytest.ini
+.coverage
+htmlcov/
+
+# Temporary files
+tmp/
+temp/
+*.tmp

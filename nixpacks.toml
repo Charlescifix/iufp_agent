@@ -1,0 +1,20 @@
+[phases.setup]
+nixPkgs = ["python311", "postgresql"]
+
+[phases.install]
+cmds = [
+    "pip install --upgrade pip",
+    "pip install --no-cache-dir -r requirements-prod.txt"
+]
+
+[phases.build]
+cmds = [
+    "python -m compileall src/"
+]
+
+[start]
+cmd = "uvicorn src.chat_api:app --host 0.0.0.0 --port $PORT --workers 1"
+
+[variables]
+PYTHONUNBUFFERED = "1"
+PYTHONDONTWRITEBYTECODE = "1"

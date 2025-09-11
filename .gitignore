@@ -116,7 +116,7 @@ models/
 .transformers_cache/
 
 # Docker
-.dockerignore
+# (Note: .dockerignore should be committed)
 
 # Railway deployment
 .railway/
