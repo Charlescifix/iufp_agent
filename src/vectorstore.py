@@ -147,7 +147,8 @@ class PostgreSQLVectorStore:
                 raise error
         
         # Validate database URL format
-        if not settings.database_url.startswith('postgresql://'):
+        database_url = settings.get_database_url()
+        if not database_url or not database_url.startswith('postgresql://'):
             error = VectorStoreSecurityError("Invalid PostgreSQL URL format")
             log_security_event(
                 "invalid_database_url",
@@ -166,17 +167,18 @@ class PostgreSQLVectorStore:
         try:
             # Create SQLAlchemy engine with security settings
             # Parse SSL mode from database URL or use default
-            ssl_mode = "disable" if "sslmode=disable" in settings.database_url else "prefer"
+            database_url = settings.get_database_url()
+            ssl_mode = "disable" if "sslmode=disable" in database_url else "prefer"
             connect_args = {
                 "application_name": "iufp_rag_system",
             }
             
             # Only set sslmode if not already in the URL
-            if "sslmode=" not in settings.database_url:
+            if "sslmode=" not in database_url:
                 connect_args["sslmode"] = ssl_mode
             
             self.engine = create_engine(
-                settings.database_url,
+                settings.get_database_url(),
                 pool_size=5,
                 max_overflow=10,
                 pool_timeout=30,

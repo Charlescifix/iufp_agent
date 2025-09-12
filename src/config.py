@@ -63,6 +63,15 @@ class Settings(BaseSettings):
     def get_cors_methods(self) -> List[str]:
         return [method.strip() for method in self.allowed_methods.split(',')]
     
+    def get_database_url(self) -> str:
+        """Get properly formatted database URL, converting postgres:// to postgresql://"""
+        if self.database_url:
+            # Convert deprecated postgres:// to postgresql://
+            if self.database_url.startswith('postgres://'):
+                return self.database_url.replace('postgres://', 'postgresql://', 1)
+            return self.database_url
+        return ""
+    
     class Config:
         env_file = ".env"
         case_sensitive = False
