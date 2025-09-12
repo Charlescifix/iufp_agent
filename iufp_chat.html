@@ -268,6 +268,12 @@ Responsive breakpoints: 480px, 768px, 1200px
             color: #002147;
         }
 
+        .message.bot .message-content strong {
+            color: #002147;
+            font-weight: 700;
+            font-size: 1.05em;
+        }
+
         .input-container {
             padding: 20px;
             background: white;
@@ -703,9 +709,9 @@ Responsive breakpoints: 480px, 768px, 1200px
         }
 
         function formatMessage(content) {
-            // Remove markdown formatting
-            content = content.replace(/\*\*(.*?)\*\*/g, '$1');
-            content = content.replace(/\*(.*?)\*/g, '$1');
+            // Convert markdown formatting to HTML
+            content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            content = content.replace(/\*(.*?)\*/g, '<em>$1</em>');
             
             // Split into paragraphs and format numbered lists
             const lines = content.split('\n');
@@ -713,7 +719,10 @@ Responsive breakpoints: 480px, 768px, 1200px
             
             for (let line of lines) {
                 line = line.trim();
-                if (!line) continue;
+                if (!line) {
+                    formattedLines.push('<br>');
+                    continue;
+                }
                 
                 // Handle numbered lists (1., 2., etc.)
                 if (/^\d+\./.test(line)) {
@@ -729,7 +738,7 @@ Responsive breakpoints: 480px, 768px, 1200px
                 }
             }
             
-            return formattedLines.join('\n');
+            return formattedLines.join('<br>');
         }
 
         function addMessage(content, sender, sources = null) {
@@ -745,10 +754,9 @@ Responsive breakpoints: 480px, 768px, 1200px
             messageContent.className = 'message-content';
             
             if (sender === 'bot') {
-                // Format bot messages with proper line breaks
+                // Format bot messages with HTML formatting
                 const formattedContent = formatMessage(content);
-                messageContent.style.whiteSpace = 'pre-line';
-                messageContent.textContent = formattedContent;
+                messageContent.innerHTML = formattedContent;
             } else {
                 messageContent.textContent = content;
             }
