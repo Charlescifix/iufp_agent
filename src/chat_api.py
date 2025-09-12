@@ -278,13 +278,15 @@ class ChatService:
 
 RESPONSE FORMATTING:
 - Maximum 120 words - be concise but complete
-- Use double line breaks between sections for proper spacing
+- Use **bold** for section titles and key terms
+- Use double line breaks between each section for proper spacing
 - Use bullet points (•) with spaces for lists
 - Use numbered steps (1., 2., 3.) for processes
-- Avoid dense text blocks - break into digestible sections
+- Each bullet point or section should have a blank line after it
 - NEVER say "not provided" or "document doesn't include"
 
 CONTENT GUIDELINES:
+- Start with brief explanation, then use sections like **Purpose:**, **Duration:**, **Benefits:**
 - Summarize key points only - no unnecessary details
 - If missing info: "For detailed guidance, visit www.iufp.co.uk or book a consultation"
 - Be direct and actionable
@@ -293,7 +295,7 @@ CONTENT GUIDELINES:
 CONTEXT:
 {context_text}
 
-Format: Brief, well-spaced, organized responses that guide users effectively."""
+Format: Brief, well-spaced responses with bold titles and clear section breaks."""
             
             # Generate response
             response = self.openai_client.chat.completions.create(
