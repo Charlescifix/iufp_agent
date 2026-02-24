@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     max_retrieval_results: int = 3
     max_output_tokens: int = 200
     embedding_dimension: int = 1536
+    response_cache_ttl_seconds: int = 180
+    response_cache_max_entries: int = 200
+    healthcheck_cache_ttl_seconds: int = 30
     
     # CORS Configuration
     allowed_origins: str = "http://localhost:3000,http://localhost:8080"

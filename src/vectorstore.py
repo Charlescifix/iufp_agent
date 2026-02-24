@@ -256,6 +256,8 @@ class PostgreSQLVectorStore:
             # Create all tables
             Base.metadata.create_all(bind=self.engine)
             
+            self._configure_vector_search_indexes()
+            self._verify_similarity_query_plan()
             self.logger.info("Database tables created/verified successfully")
             log_function_result(self.logger, "_create_tables")
             
@@ -264,6 +266,68 @@ class PostgreSQLVectorStore:
             log_function_result(self.logger, "_create_tables", error=error)
             raise error
     
+
+    def _configure_vector_search_indexes(self) -> None:
+        """Create ANN index for pgvector when corpus size is large enough."""
+        log_function_call(self.logger, "_configure_vector_search_indexes")
+
+        try:
+            with self.engine.connect() as conn:
+                row_count = conn.execute(text("SELECT COUNT(*) FROM document_chunks")).scalar() or 0
+
+                # For smaller datasets, a sequential scan is typically more accurate/faster than ANN.
+                if row_count < 1000:
+                    self.logger.info("Skipping ivfflat index for small corpus", row_count=row_count)
+                    conn.execute(text("ANALYZE document_chunks"))
+                    conn.commit()
+                    log_function_result(self.logger, "_configure_vector_search_indexes", result=f"skipped_small_corpus:{row_count}")
+                    return
+
+                lists = max(10, int(row_count ** 0.5))
+                conn.execute(text("SET maintenance_work_mem = '64MB'"))
+                conn.execute(text(f"""
+                    CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_ivfflat
+                    ON document_chunks
+                    USING ivfflat (embedding vector_cosine_ops)
+                    WITH (lists = {lists})
+                """))
+                conn.execute(text("ANALYZE document_chunks"))
+                conn.commit()
+                self.logger.info("Configured ivfflat index", row_count=row_count, lists=lists)
+
+            log_function_result(self.logger, "_configure_vector_search_indexes")
+        except Exception as e:
+            self.logger.warning("Could not create ivfflat index, falling back to sequential scan", error=str(e))
+            log_function_result(self.logger, "_configure_vector_search_indexes", error=e)
+
+    def _verify_similarity_query_plan(self, limit: int = 10) -> Dict[str, Any]:
+        """Inspect query plan for vector search to confirm index usage behavior."""
+        log_function_call(self.logger, "_verify_similarity_query_plan", limit=limit)
+
+        sample_embedding = "[" + ",".join(["0"] * settings.embedding_dimension) + "]"
+        sql = text(f"""
+            EXPLAIN (FORMAT TEXT)
+            SELECT chunk_id
+            FROM document_chunks
+            ORDER BY embedding <=> CAST(:embedding AS vector)
+            LIMIT {limit}
+        """)
+
+        try:
+            with self.engine.connect() as conn:
+                result = conn.execute(sql, {"embedding": sample_embedding})
+                lines = [row[0] for row in result.fetchall()]
+
+            index_in_plan = any("Index" in line or "ivfflat" in line.lower() for line in lines)
+            plan_summary = {"index_detected": index_in_plan, "plan_lines": lines[:6]}
+            self.logger.info("Vector query plan inspected", **plan_summary)
+            log_function_result(self.logger, "_verify_similarity_query_plan", result=plan_summary)
+            return plan_summary
+        except Exception as e:
+            self.logger.warning("Query plan check failed", error=str(e))
+            log_function_result(self.logger, "_verify_similarity_query_plan", error=e)
+            return {"index_detected": False, "error": str(e)}
+
     def _validate_chunk_data(self, chunk: DocumentChunk, embedding: List[float]) -> None:
         """Validate chunk and embedding data"""
         log_function_call(self.logger, "_validate_chunk_data", chunk_id=chunk.chunk_id)
@@ -430,6 +494,7 @@ class PostgreSQLVectorStore:
                 raise error
             
             with self.SessionLocal() as session:
+                session.execute(text("SET ivfflat.probes = 10"))
                 # Build query with similarity search
                 query = session.query(
                     DocumentChunkEntity.chunk_id,

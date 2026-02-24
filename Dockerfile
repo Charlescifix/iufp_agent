@@ -5,7 +5,8 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    NLTK_DATA=/usr/local/share/nltk_data
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -18,7 +19,8 @@ WORKDIR /app
 
 # Install Python dependencies
 COPY requirements-prod.txt .
-RUN pip install --no-cache-dir -r requirements-prod.txt
+RUN pip install --no-cache-dir -r requirements-prod.txt \
+    && python -m nltk.downloader -d /usr/local/share/nltk_data punkt stopwords
 
 # Copy application code
 COPY . .
@@ -36,7 +38,7 @@ USER appuser
 EXPOSE 8000
 
 # Health check using the dedicated script
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
+HEALTHCHECK --interval=90s --timeout=10s --start-period=45s --retries=3 \
     CMD ./healthcheck.sh
 
 # Start command using bash to execute the startup script

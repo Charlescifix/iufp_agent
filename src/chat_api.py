@@ -2,6 +2,7 @@ import asyncio
 import time
 import uuid
 from datetime import datetime, timedelta
+from collections import OrderedDict
 from typing import List, Dict, Optional, Any
 from contextlib import asynccontextmanager
 import hashlib
@@ -35,7 +36,7 @@ from .vectorstore import PostgreSQLVectorStore, ChatMessage
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=5000, description="User message")
     session_id: Optional[str] = Field(None, description="Session ID for conversation continuity")
-    max_results: Optional[int] = Field(10, ge=1, le=20, description="Maximum search results")
+    max_results: Optional[int] = Field(settings.max_retrieval_results, ge=1, le=20, description="Maximum search results")
     include_sources: Optional[bool] = Field(True, description="Include source citations")
     
     @validator('message')
@@ -210,6 +211,8 @@ async def lifespan(app: FastAPI):
         app.state.vector_store = vector_store
         app.state.retriever = retriever
         app.state.openai_client = OpenAI(api_key=settings.openai_api_key)
+        app.state.health_state = HealthcheckState(settings.healthcheck_cache_ttl_seconds)
+        app.state.chat_service = ChatService(vector_store, retriever, app.state.openai_client)
         
         logger.info("All components initialized successfully")
         
@@ -254,6 +257,57 @@ app.state.limiter = security_manager.limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
+
+
+class TTLResponseCache:
+    """Small in-memory TTL+LRU cache for repeated queries."""
+    def __init__(self, ttl_seconds: int, max_entries: int):
+        self.ttl_seconds = ttl_seconds
+        self.max_entries = max_entries
+        self._store: "OrderedDict[str, tuple[float, str]]" = OrderedDict()
+
+    def _evict_expired(self) -> None:
+        now = time.time()
+        expired_keys = [k for k, (exp, _) in self._store.items() if exp <= now]
+        for k in expired_keys:
+            self._store.pop(k, None)
+
+    def get(self, key: str) -> Optional[str]:
+        self._evict_expired()
+        item = self._store.get(key)
+        if not item:
+            return None
+        expires_at, value = item
+        if expires_at <= time.time():
+            self._store.pop(key, None)
+            return None
+        self._store.move_to_end(key)
+        return value
+
+    def set(self, key: str, value: str) -> None:
+        self._evict_expired()
+        self._store[key] = (time.time() + self.ttl_seconds, value)
+        self._store.move_to_end(key)
+        while len(self._store) > self.max_entries:
+            self._store.popitem(last=False)
+
+
+class HealthcheckState:
+    def __init__(self, ttl_seconds: int):
+        self.ttl_seconds = ttl_seconds
+        self.last_run = 0.0
+        self.last_response: Optional[HealthResponse] = None
+
+    def get_cached(self) -> Optional[HealthResponse]:
+        if self.last_response and (time.time() - self.last_run) < self.ttl_seconds:
+            return self.last_response
+        return None
+
+    def set(self, response: HealthResponse) -> None:
+        self.last_response = response
+        self.last_run = time.time()
+
+
 # Chat API Implementation
 class ChatService:
     def __init__(self, vector_store: PostgreSQLVectorStore, retriever: HybridRetriever, openai_client: OpenAI):
@@ -261,11 +315,25 @@ class ChatService:
         self.retriever = retriever
         self.openai_client = openai_client
         self.logger = get_logger(__name__)
+        self.response_cache = TTLResponseCache(
+            ttl_seconds=settings.response_cache_ttl_seconds,
+            max_entries=settings.response_cache_max_entries
+        )
     
+    def _create_cache_key(self, query: str, context_chunks: List[RetrievalResult]) -> str:
+        normalized_query = " ".join(query.lower().split())
+        context_signature = "|".join([f"{c.chunk_id}:{round(c.hybrid_score, 3)}" for c in context_chunks[:3]])
+        return hashlib.sha256(f"{normalized_query}::{context_signature}".encode("utf-8")).hexdigest()
+
     async def generate_response(self, query: str, context_chunks: List[RetrievalResult]) -> str:
         """Generate response using OpenAI with context"""
         log_function_call(self.logger, "generate_response", query_length=len(query), context_count=len(context_chunks))
-        
+        cache_key = self._create_cache_key(query, context_chunks)
+        cached_response = self.response_cache.get(cache_key)
+        if cached_response:
+            self.logger.info("Response cache hit", query_length=len(query))
+            return cached_response
+
         try:
             # Build context from retrieved chunks
             context_text = "\n\n".join([
@@ -318,6 +386,7 @@ Format: Brief, well-spaced responses with bold titles and clear section breaks."
                 tokens_used=response.usage.total_tokens if response.usage else 0
             )
             
+            self.response_cache.set(cache_key, assistant_response)
             log_function_result(self.logger, "generate_response", result=f"Generated {len(assistant_response)} chars")
             return assistant_response
             
@@ -339,7 +408,7 @@ Format: Brief, well-spaced responses with bold titles and clear section breaks."
             
             # Retrieve relevant context
             retrieval_config = RetrievalConfig(
-                max_results=request.max_results,
+                max_results=request.max_results or settings.max_retrieval_results,
                 vector_weight=0.7,
                 bm25_weight=0.3
             )
@@ -433,15 +502,8 @@ async def chat_endpoint(
     client_ip = get_remote_address(request)
     
     try:
-        # Initialize chat service
-        chat_service = ChatService(
-            app.state.vector_store,
-            app.state.retriever,
-            app.state.openai_client
-        )
-        
         # Process message
-        response = await chat_service.process_chat_message(request_data, client_ip)
+        response = await app.state.chat_service.process_chat_message(request_data, client_ip)
         
         # Log successful request
         logger.info(
@@ -482,6 +544,9 @@ async def chat_endpoint(
 async def health_check():
     """Health check endpoint"""
     try:
+        cached = app.state.health_state.get_cached()
+        if cached:
+            return cached
         # Check database
         db_status = "healthy"
         try:
@@ -499,7 +564,7 @@ async def health_check():
         # Overall status
         overall_status = "healthy" if db_status == "healthy" and retriever_status == "healthy" else "degraded"
         
-        return HealthResponse(
+        response = HealthResponse(
             status=overall_status,
             timestamp=datetime.utcnow().isoformat(),
             components={
@@ -508,6 +573,8 @@ async def health_check():
                 "api": "healthy"
             }
         )
+        app.state.health_state.set(response)
+        return response
         
     except Exception as e:
         logger.error("Health check failed", error=str(e))
