@@ -104,7 +104,6 @@ class HybridRetriever:
                 nltk.download('stopwords', quiet=True)
 
             self.stop_words = set(stopwords.words('english'))
-
             self.logger.debug("NLTK components initialized successfully")
             log_function_result(self.logger, "_initialize_nltk")
 
