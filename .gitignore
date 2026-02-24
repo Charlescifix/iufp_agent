@@ -156,9 +156,15 @@ experiments/
 test_*.py
 check_*.py
 
+# Markdown files
+*.md
+
 # Analysis reports and chat logs (may contain sensitive data)
-*_Analysis_Report.md
 chat_logs_*.json
+
+# AWS credentials in env
+.env*
+!.env.example
 
 # System error files
 nul

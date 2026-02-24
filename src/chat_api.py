@@ -270,7 +270,7 @@ class ChatService:
             # Build context from retrieved chunks
             context_text = "\n\n".join([
                 f"Source: {chunk.document_name}\n{chunk.text}"
-                for chunk in context_chunks[:5]  # Limit context
+                for chunk in context_chunks[:3]  # Limit context
             ]) if context_chunks else "No specific context available - provide general IUFP guidance."
             
             # Create system prompt
@@ -288,7 +288,7 @@ RESPONSE FORMATTING:
 CONTENT GUIDELINES:
 - Start with brief explanation, then use sections like **Purpose:**, **Duration:**, **Benefits:**
 - Summarize key points only - no unnecessary details
-- If missing info: "For detailed guidance, visit www.iufp.co.uk or book a consultation"
+- If missing info: "For detailed guidance, visit www.iufp.org.uk or book a consultation"
 - Be direct and actionable
 - Maintain helpful, professional tone
 
@@ -304,7 +304,7 @@ Format: Brief, well-spaced responses with bold titles and clear section breaks."
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": query}
                 ],
-                max_tokens=settings.max_retrieval_results * 100,  # Dynamic token limit
+                max_tokens=settings.max_output_tokens,
                 temperature=0.7,
                 top_p=0.9
             )

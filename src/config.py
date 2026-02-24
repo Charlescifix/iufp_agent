@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     
     # OpenAI Configuration
     openai_api_key: str = ""
-    embedding_model: str = "text-embedding-3-large"
-    chat_model: str = "gpt-4-turbo"
+    embedding_model: str = "text-embedding-3-small"
+    chat_model: str = "gpt-4o-mini"
     
     # Security Configuration
     secret_key: str = ""
@@ -47,10 +47,11 @@ class Settings(BaseSettings):
     # Application Configuration
     debug: bool = False
     log_level: str = "INFO"
-    max_chunk_size: int = 1000
-    chunk_overlap: int = 200
-    max_retrieval_results: int = 10
-    embedding_dimension: int = 3072
+    max_chunk_size: int = 500
+    chunk_overlap: int = 100
+    max_retrieval_results: int = 3
+    max_output_tokens: int = 200
+    embedding_dimension: int = 1536
     
     # CORS Configuration
     allowed_origins: str = "http://localhost:3000,http://localhost:8080"
