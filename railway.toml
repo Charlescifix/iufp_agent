@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "pip install --no-cache-dir -r requirements-prod.txt"
+buildCommand = "pip install --no-cache-dir -r requirements-prod.txt && python -m nltk.downloader -d /opt/nltk_data punkt stopwords"
 
 [deploy]
 startCommand = "./start.sh"
@@ -14,3 +14,4 @@ PYTHONUNBUFFERED = "1"
 PYTHONDONTWRITEBYTECODE = "1"
 LOG_LEVEL = "INFO"
 DEBUG = "false"
+NLTK_DATA = "/opt/nltk_data"

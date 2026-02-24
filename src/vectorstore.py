@@ -268,20 +268,33 @@ class PostgreSQLVectorStore:
     
 
     def _configure_vector_search_indexes(self) -> None:
-        """Create ANN index for pgvector and tune probe settings."""
+        """Create ANN index for pgvector when corpus size is large enough."""
         log_function_call(self.logger, "_configure_vector_search_indexes")
 
         try:
             with self.engine.connect() as conn:
+                row_count = conn.execute(text("SELECT COUNT(*) FROM document_chunks")).scalar() or 0
+
+                # For smaller datasets, a sequential scan is typically more accurate/faster than ANN.
+                if row_count < 1000:
+                    self.logger.info("Skipping ivfflat index for small corpus", row_count=row_count)
+                    conn.execute(text("ANALYZE document_chunks"))
+                    conn.commit()
+                    log_function_result(self.logger, "_configure_vector_search_indexes", result=f"skipped_small_corpus:{row_count}")
+                    return
+
+                lists = max(10, int(row_count ** 0.5))
                 conn.execute(text("SET maintenance_work_mem = '64MB'"))
-                conn.execute(text("""
+                conn.execute(text(f"""
                     CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_ivfflat
                     ON document_chunks
                     USING ivfflat (embedding vector_cosine_ops)
-                    WITH (lists = 100)
+                    WITH (lists = {lists})
                 """))
                 conn.execute(text("ANALYZE document_chunks"))
                 conn.commit()
+                self.logger.info("Configured ivfflat index", row_count=row_count, lists=lists)
+
             log_function_result(self.logger, "_configure_vector_search_indexes")
         except Exception as e:
             self.logger.warning("Could not create ivfflat index, falling back to sequential scan", error=str(e))
@@ -314,6 +327,24 @@ class PostgreSQLVectorStore:
             self.logger.warning("Query plan check failed", error=str(e))
             log_function_result(self.logger, "_verify_similarity_query_plan", error=e)
             return {"index_detected": False, "error": str(e)}
+
+
+    def _has_ivfflat_index(self) -> bool:
+        """Check if ivfflat index exists for document chunk embeddings."""
+        try:
+            with self.engine.connect() as conn:
+                result = conn.execute(text("""
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM pg_indexes
+                        WHERE schemaname = 'public'
+                          AND tablename = 'document_chunks'
+                          AND indexname = 'idx_document_chunks_embedding_ivfflat'
+                    )
+                """))
+                return bool(result.scalar())
+        except Exception:
+            return False
 
     def _validate_chunk_data(self, chunk: DocumentChunk, embedding: List[float]) -> None:
         """Validate chunk and embedding data"""
@@ -481,7 +512,8 @@ class PostgreSQLVectorStore:
                 raise error
             
             with self.SessionLocal() as session:
-                session.execute(text("SET ivfflat.probes = 10"))
+                if self._has_ivfflat_index():
+                    session.execute(text("SET ivfflat.probes = 10"))
                 # Build query with similarity search
                 query = session.query(
                     DocumentChunkEntity.chunk_id,
