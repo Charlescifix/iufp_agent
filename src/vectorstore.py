@@ -328,6 +328,24 @@ class PostgreSQLVectorStore:
             log_function_result(self.logger, "_verify_similarity_query_plan", error=e)
             return {"index_detected": False, "error": str(e)}
 
+
+    def _has_ivfflat_index(self) -> bool:
+        """Check if ivfflat index exists for document chunk embeddings."""
+        try:
+            with self.engine.connect() as conn:
+                result = conn.execute(text("""
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM pg_indexes
+                        WHERE schemaname = 'public'
+                          AND tablename = 'document_chunks'
+                          AND indexname = 'idx_document_chunks_embedding_ivfflat'
+                    )
+                """))
+                return bool(result.scalar())
+        except Exception:
+            return False
+
     def _validate_chunk_data(self, chunk: DocumentChunk, embedding: List[float]) -> None:
         """Validate chunk and embedding data"""
         log_function_call(self.logger, "_validate_chunk_data", chunk_id=chunk.chunk_id)
@@ -494,7 +512,8 @@ class PostgreSQLVectorStore:
                 raise error
             
             with self.SessionLocal() as session:
-                session.execute(text("SET ivfflat.probes = 10"))
+                if self._has_ivfflat_index():
+                    session.execute(text("SET ivfflat.probes = 10"))
                 # Build query with similarity search
                 query = session.query(
                     DocumentChunkEntity.chunk_id,
