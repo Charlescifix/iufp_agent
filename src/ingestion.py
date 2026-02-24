@@ -55,7 +55,7 @@ class S3IngestionService:
             # Test credentials by listing bucket
             self.s3_client.head_bucket(Bucket=settings.s3_bucket_name)
             
-            self.logger.info("S3 client initialized successfully", bucket=settings.s3_bucket_name)
+            self.logger.info("S3 client initialised successfully", bucket=settings.s3_bucket_name)
             log_function_result(self.logger, "_setup_s3_client")
             
         except NoCredentialsError as e:

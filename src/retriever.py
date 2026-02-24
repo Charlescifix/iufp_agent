@@ -72,23 +72,23 @@ class HybridRetriever:
         self.stop_words = set()
         
     def _setup_components(self) -> None:
-        """Initialize vector store and embedding service"""
+        """Initialise vector store and embedding service"""
         log_function_call(self.logger, "_setup_components")
         
         try:
             self.vector_store = PostgreSQLVectorStore()
             self.embedding_service = EmbeddingService()
             
-            self.logger.info("Hybrid retriever components initialized successfully")
+            self.logger.info("Hybrid retriever components initialised successfully")
             log_function_result(self.logger, "_setup_components")
             
         except Exception as e:
-            error = RetrievalSecurityError(f"Failed to initialize retriever components: {str(e)}")
+            error = RetrievalSecurityError(f"Failed to initialise retriever components: {str(e)}")
             log_function_result(self.logger, "_setup_components", error=error)
             raise error
     
     def _initialize_nltk(self) -> None:
-        """Initialize NLTK components with error handling"""
+        """Initialise NLTK components with error handling"""
         log_function_call(self.logger, "_initialize_nltk")
         
         try:
@@ -104,11 +104,11 @@ class HybridRetriever:
                 nltk.download('stopwords', quiet=True)
 
             self.stop_words = set(stopwords.words('english'))
-            self.logger.debug("NLTK components initialized successfully")
+            self.logger.debug("NLTK components initialised successfully")
             log_function_result(self.logger, "_initialize_nltk")
 
         except Exception as e:
-            self.logger.warning("NLTK initialization failed, using fallback", error=str(e))
+            self.logger.warning("NLTK initialisation failed, using fallback", error=str(e))
             # Fallback stopwords
             self.stop_words = {
                 'i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you', 'your', 
@@ -581,7 +581,7 @@ class HybridRetriever:
 
 # Convenience functions for external use
 async def create_hybrid_retriever() -> HybridRetriever:
-    """Create and initialize hybrid retriever"""
+    """Create and initialise hybrid retriever"""
     return HybridRetriever()
 
 

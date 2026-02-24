@@ -301,7 +301,7 @@ class PostgreSQLVectorStore:
             log_function_result(self.logger, "_configure_vector_search_indexes", error=e)
 
     def _verify_similarity_query_plan(self, limit: int = 10) -> Dict[str, Any]:
-        """Inspect query plan for vector search to confirm index usage behavior."""
+        """Inspect query plan for vector search to confirm index usage behaviour."""
         log_function_call(self.logger, "_verify_similarity_query_plan", limit=limit)
 
         sample_embedding = "[" + ",".join(["0"] * settings.embedding_dimension) + "]"
@@ -715,7 +715,7 @@ class PostgreSQLVectorStore:
 
 # Convenience functions for external use
 async def create_vector_store() -> PostgreSQLVectorStore:
-    """Create and initialize vector store"""
+    """Create and initialise vector store"""
     return PostgreSQLVectorStore()
 
 
