@@ -5,7 +5,7 @@ buildCommand = "pip install --no-cache-dir -r requirements-prod.txt"
 [deploy]
 startCommand = "./start.sh"
 healthcheckPath = "/health"
-healthcheckTimeout = 300
+healthcheckTimeout = 30
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 

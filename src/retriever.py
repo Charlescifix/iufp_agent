@@ -92,18 +92,10 @@ class HybridRetriever:
         log_function_call(self.logger, "_initialize_nltk")
         
         try:
-            # Download required NLTK data
-            try:
-                nltk.data.find('tokenizers/punkt')
-            except LookupError:
-                nltk.download('punkt', quiet=True)
-            
-            try:
-                nltk.data.find('corpora/stopwords')
-                self.stop_words = set(stopwords.words('english'))
-            except LookupError:
-                nltk.download('stopwords', quiet=True)
-                self.stop_words = set(stopwords.words('english'))
+            # Expect NLTK data to be pre-baked into the runtime image.
+            nltk.data.find('tokenizers/punkt')
+            nltk.data.find('corpora/stopwords')
+            self.stop_words = set(stopwords.words('english'))
             
             self.logger.debug("NLTK components initialized successfully")
             log_function_result(self.logger, "_initialize_nltk")
