@@ -233,7 +233,7 @@ class HybridRetriever:
                             'document_id': result.document_id,
                             'document_name': result.document_name,
                             'text': result.text,
-                            'metadata': json.loads(result.metadata) if result.metadata else None
+                            'metadata': json.loads(result.chunk_metadata) if result.chunk_metadata else None
                         })
                 
                 if documents:
