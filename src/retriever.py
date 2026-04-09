@@ -1,20 +1,8 @@
 import asyncio
 import time
-from typing import List, Dict, Optional, Tuple, Any
+from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, asdict
 import re
-import math
-from collections import Counter, defaultdict
-import json
-
-import numpy as np
-from rank_bm25 import BM25Okapi
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import nltk
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
-from nltk.stem import PorterStemmer
 
 from .config import settings
 from .logger import get_logger, log_function_call, log_function_result, log_security_event
@@ -55,21 +43,9 @@ class HybridRetriever:
     def __init__(self):
         self.logger = get_logger(__name__)
         self._setup_components()
-        self._initialize_nltk()
-        
+
         # Retrieval configuration
         self.config = RetrievalConfig()
-        
-        # BM25 index cache
-        self.bm25_index = None
-        self.bm25_documents = []
-        self.bm25_metadata = []
-        self.last_index_update = 0
-        self.index_cache_duration = 3600  # 1 hour
-        
-        # Query preprocessing
-        self.stemmer = PorterStemmer()
-        self.stop_words = set()
         
     def _setup_components(self) -> None:
         """Initialise vector store and embedding service"""
@@ -86,43 +62,6 @@ class HybridRetriever:
             error = RetrievalSecurityError(f"Failed to initialise retriever components: {str(e)}")
             log_function_result(self.logger, "_setup_components", error=error)
             raise error
-    
-    def _initialize_nltk(self) -> None:
-        """Initialise NLTK components with error handling"""
-        log_function_call(self.logger, "_initialize_nltk")
-        
-        try:
-            # Prefer pre-baked NLTK assets, with runtime download fallback for local/dev resilience.
-            try:
-                nltk.data.find('tokenizers/punkt')
-            except LookupError:
-                nltk.download('punkt', quiet=True)
-
-            try:
-                nltk.data.find('corpora/stopwords')
-            except LookupError:
-                nltk.download('stopwords', quiet=True)
-
-            self.stop_words = set(stopwords.words('english'))
-            self.logger.debug("NLTK components initialised successfully")
-            log_function_result(self.logger, "_initialize_nltk")
-
-        except Exception as e:
-            self.logger.warning("NLTK initialisation failed, using fallback", error=str(e))
-            # Fallback stopwords
-            self.stop_words = {
-                'i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you', 'your', 
-                'yours', 'yourself', 'yourselves', 'he', 'him', 'his', 'himself', 'she', 
-                'her', 'hers', 'herself', 'it', 'its', 'itself', 'they', 'them', 'their', 
-                'theirs', 'themselves', 'what', 'which', 'who', 'whom', 'this', 'that', 
-                'these', 'those', 'am', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 
-                'have', 'has', 'had', 'having', 'do', 'does', 'did', 'doing', 'a', 'an', 
-                'the', 'and', 'but', 'if', 'or', 'because', 'as', 'until', 'while', 'of', 
-                'at', 'by', 'for', 'with', 'through', 'during', 'before', 'after', 'above', 
-                'below', 'up', 'down', 'in', 'out', 'on', 'off', 'over', 'under', 'again', 
-                'further', 'then', 'once'
-            }
-            log_function_result(self.logger, "_initialize_nltk")
     
     def _validate_query(self, query: str) -> None:
         """Validate search query for security"""
@@ -166,100 +105,6 @@ class HybridRetriever:
         
         log_function_result(self.logger, "_validate_query")
     
-    def _preprocess_text(self, text: str) -> List[str]:
-        """Preprocess text for BM25 indexing"""
-        if not text:
-            return []
-        
-        # Convert to lowercase and remove special characters
-        text = re.sub(r'[^\w\s]', ' ', text.lower())
-        
-        # Tokenize
-        try:
-            tokens = word_tokenize(text)
-        except:
-            # Fallback tokenization
-            tokens = text.split()
-        
-        # Remove stopwords and stem
-        processed_tokens = []
-        for token in tokens:
-            if len(token) > 2 and token not in self.stop_words:
-                try:
-                    stemmed = self.stemmer.stem(token)
-                    processed_tokens.append(stemmed)
-                except:
-                    processed_tokens.append(token)
-        
-        return processed_tokens
-    
-    async def _update_bm25_index(self, force_update: bool = False) -> None:
-        """Update BM25 index from database"""
-        log_function_call(self.logger, "_update_bm25_index", force_update=force_update)
-        
-        current_time = time.time()
-        
-        # Check if update is needed
-        if (not force_update and 
-            self.bm25_index is not None and 
-            (current_time - self.last_index_update) < self.index_cache_duration):
-            self.logger.debug("BM25 index is up to date, skipping update")
-            return
-        
-        try:
-            # Get all documents from vector store
-            with self.vector_store.SessionLocal() as session:
-                from .vectorstore import DocumentChunkEntity
-                
-                results = session.query(DocumentChunkEntity).all()
-                
-                if not results:
-                    self.logger.warning("No documents found for BM25 indexing")
-                    self.bm25_index = None
-                    self.bm25_documents = []
-                    self.bm25_metadata = []
-                    return
-                
-                # Preprocess documents for BM25
-                documents = []
-                metadata = []
-                
-                for result in results:
-                    processed_tokens = self._preprocess_text(result.text)
-                    if processed_tokens:  # Only include non-empty documents
-                        documents.append(processed_tokens)
-                        metadata.append({
-                            'chunk_id': result.chunk_id,
-                            'document_id': result.document_id,
-                            'document_name': result.document_name,
-                            'text': result.text,
-                            'metadata': json.loads(result.chunk_metadata) if result.chunk_metadata else None
-                        })
-                
-                if documents:
-                    # Create BM25 index
-                    self.bm25_index = BM25Okapi(documents)
-                    self.bm25_documents = documents
-                    self.bm25_metadata = metadata
-                    self.last_index_update = current_time
-                    
-                    self.logger.info(
-                        "BM25 index updated successfully",
-                        document_count=len(documents),
-                        avg_tokens=sum(len(doc) for doc in documents) / len(documents)
-                    )
-                else:
-                    self.logger.warning("No valid documents for BM25 indexing after preprocessing")
-                    self.bm25_index = None
-                    self.bm25_documents = []
-                    self.bm25_metadata = []
-            
-            log_function_result(self.logger, "_update_bm25_index", result=f"Indexed {len(self.bm25_documents)} documents")
-            
-        except Exception as e:
-            log_function_result(self.logger, "_update_bm25_index", error=e)
-            raise
-    
     async def _vector_search(self, query: str, limit: int) -> List[SearchResult]:
         """Perform vector similarity search"""
         log_function_call(self.logger, "_vector_search", query_length=len(query), limit=limit)
@@ -283,46 +128,18 @@ class HybridRetriever:
             log_function_result(self.logger, "_vector_search", error=e)
             raise
     
-    async def _bm25_search(self, query: str, limit: int) -> List[Dict]:
-        """Perform BM25 search"""
-        log_function_call(self.logger, "_bm25_search", query_length=len(query), limit=limit)
-        
+    async def _fts_search(self, query: str, limit: int) -> List[Dict]:
+        """Perform full-text search via PostgreSQL (no in-memory index)."""
+        log_function_call(self.logger, "_fts_search", query_length=len(query), limit=limit)
+
         try:
-            # Update BM25 index if needed
-            await self._update_bm25_index()
-            
-            if not self.bm25_index or not self.bm25_documents:
-                self.logger.warning("BM25 index not available")
-                return []
-            
-            # Preprocess query
-            query_tokens = self._preprocess_text(query)
-            if not query_tokens:
-                self.logger.warning("Query preprocessing resulted in empty tokens")
-                return []
-            
-            # Get BM25 scores
-            scores = self.bm25_index.get_scores(query_tokens)
-            
-            # Get top results with scores
-            scored_results = []
-            for i, score in enumerate(scores):
-                if i < len(self.bm25_metadata) and score > 0:
-                    result = self.bm25_metadata[i].copy()
-                    result['bm25_score'] = float(score)
-                    scored_results.append(result)
-            
-            # Sort by score and limit
-            scored_results.sort(key=lambda x: x['bm25_score'], reverse=True)
-            top_results = scored_results[:limit]
-            
-            self.logger.debug(f"BM25 search returned {len(top_results)} results")
-            log_function_result(self.logger, "_bm25_search", result=f"{len(top_results)} results")
-            return top_results
-            
+            results = await self.vector_store.fts_search(query, limit)
+            self.logger.debug(f"FTS search returned {len(results)} results")
+            log_function_result(self.logger, "_fts_search", result=f"{len(results)} results")
+            return results
         except Exception as e:
-            log_function_result(self.logger, "_bm25_search", error=e)
-            raise
+            log_function_result(self.logger, "_fts_search", error=e)
+            return []
     
     def _expand_query(self, query: str) -> str:
         """Expand query with synonyms and related terms"""
@@ -480,9 +297,9 @@ class HybridRetriever:
             search_limit = min(self.config.max_results * 2, 50)  # Get more results for better ranking
             
             vector_task = asyncio.create_task(self._vector_search(query, search_limit))
-            bm25_task = asyncio.create_task(self._bm25_search(query, search_limit))
-            
-            vector_results, bm25_results = await asyncio.gather(vector_task, bm25_task)
+            fts_task = asyncio.create_task(self._fts_search(query, search_limit))
+
+            vector_results, bm25_results = await asyncio.gather(vector_task, fts_task)
             
             # Combine and rank results
             final_results = self._combine_results(vector_results, bm25_results)
@@ -514,21 +331,13 @@ class HybridRetriever:
         log_function_call(self.logger, "_rerank_results", result_count=len(results))
         
         try:
-            # Simple re-ranking based on query term matches and document freshness
-            query_terms = set(self._preprocess_text(query))
-            
+            # Simple re-ranking: boost results that share words with the query
+            query_terms = set(re.sub(r'[^\w\s]', ' ', query.lower()).split())
+
             for result in results:
-                # Calculate additional features
-                text_tokens = set(self._preprocess_text(result.text))
-                
-                # Term overlap ratio
-                if query_terms and text_tokens:
-                    overlap_ratio = len(query_terms & text_tokens) / len(query_terms)
-                else:
-                    overlap_ratio = 0.0
-                
-                # Adjust hybrid score with additional features
-                rerank_boost = overlap_ratio * 0.1  # Small boost for exact term matches
+                text_terms = set(re.sub(r'[^\w\s]', ' ', result.text.lower()).split())
+                overlap_ratio = len(query_terms & text_terms) / len(query_terms) if query_terms else 0.0
+                rerank_boost = overlap_ratio * 0.1
                 result.hybrid_score = min(1.0, result.hybrid_score + rerank_boost)
             
             # Re-sort by adjusted scores
@@ -555,18 +364,9 @@ class HybridRetriever:
             # Get database stats
             db_stats = await self.vector_store.get_document_stats()
             
-            # Get BM25 index info
-            bm25_stats = {
-                'bm25_documents': len(self.bm25_documents),
-                'last_update': self.last_index_update,
-                'cache_duration': self.index_cache_duration,
-                'index_available': self.bm25_index is not None
-            }
-            
-            # Combine stats
             stats = {
                 **db_stats,
-                **bm25_stats,
+                'keyword_search': 'postgresql_fts',
                 'config': asdict(self.config)
             }
             

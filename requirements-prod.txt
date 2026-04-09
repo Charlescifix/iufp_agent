@@ -17,15 +17,12 @@ pgvector==0.4.1
 # ML and embeddings (lightweight)
 openai==1.97.1
 numpy==2.3.2
-scikit-learn==1.7.1
 
 # Data processing (essential only)
 pydantic==2.11.7
 pydantic-settings==2.0.0
 
 # Text processing and search
-rank-bm25==0.2.2
-nltk==3.9.1
 pdfplumber==0.11.7
 
 # HTTP requests

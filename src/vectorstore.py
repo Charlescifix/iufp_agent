@@ -179,8 +179,8 @@ class PostgreSQLVectorStore:
             
             self.engine = create_engine(
                 settings.get_database_url(),
-                pool_size=5,
-                max_overflow=10,
+                pool_size=3,
+                max_overflow=5,
                 pool_timeout=30,
                 pool_recycle=3600,
                 echo=settings.debug,
@@ -276,6 +276,14 @@ class PostgreSQLVectorStore:
                 row_count = conn.execute(text("SELECT COUNT(*) FROM document_chunks")).scalar() or 0
 
                 # For smaller datasets, a sequential scan is typically more accurate/faster than ANN.
+                # GIN index for full-text search (always create regardless of corpus size)
+                conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_document_chunks_text_fts
+                    ON document_chunks USING GIN(to_tsvector('english', text))
+                """))
+                conn.commit()
+                self.logger.info("GIN full-text search index created/verified")
+
                 if row_count < 1000:
                     self.logger.info("Skipping ivfflat index for small corpus", row_count=row_count)
                     conn.execute(text("ANALYZE document_chunks"))
@@ -542,6 +550,52 @@ class PostgreSQLVectorStore:
             log_function_result(self.logger, "similarity_search", error=e)
             raise
     
+    async def fts_search(self, query: str, limit: int = 10) -> List[Dict]:
+        """Perform full-text search using PostgreSQL tsvector/ts_rank (no in-memory index)."""
+        log_function_call(self.logger, "fts_search", query_length=len(query), limit=limit)
+
+        try:
+            with self.SessionLocal() as session:
+                sql = text("""
+                    SELECT
+                        chunk_id,
+                        document_id,
+                        document_name,
+                        text,
+                        chunk_metadata,
+                        ts_rank_cd(
+                            to_tsvector('english', text),
+                            plainto_tsquery('english', :query)
+                        ) AS rank
+                    FROM document_chunks
+                    WHERE to_tsvector('english', text) @@ plainto_tsquery('english', :query)
+                    ORDER BY rank DESC
+                    LIMIT :limit
+                """)
+
+                rows = session.execute(sql, {"query": query, "limit": limit}).fetchall()
+
+                results = [
+                    {
+                        'chunk_id': row.chunk_id,
+                        'document_id': row.document_id,
+                        'document_name': row.document_name,
+                        'text': row.text,
+                        'bm25_score': float(row.rank),
+                        'metadata': json.loads(row.chunk_metadata) if row.chunk_metadata else None,
+                    }
+                    for row in rows
+                ]
+
+            self.logger.debug("FTS search completed", results_count=len(results))
+            log_function_result(self.logger, "fts_search", result=f"Found {len(results)} results")
+            return results
+
+        except Exception as e:
+            self.logger.warning("FTS search failed, returning empty results", error=str(e))
+            log_function_result(self.logger, "fts_search", error=e)
+            return []
+
     async def store_chat_message(self, chat_message: ChatMessage, user_ip: Optional[str] = None) -> None:
         """Store chat message in database"""
         log_function_call(self.logger, "store_chat_message", message_id=chat_message.message_id)
