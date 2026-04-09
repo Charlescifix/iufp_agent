@@ -4,8 +4,7 @@ nixPkgs = ["python311", "postgresql"]
 [phases.install]
 cmds = [
     "pip install --upgrade pip",
-    "pip install --no-cache-dir -r requirements-prod.txt",
-    "python -m nltk.downloader -d /opt/nltk_data punkt stopwords"
+    "pip install --no-cache-dir -r requirements-prod.txt"
 ]
 
 [phases.build]
@@ -20,4 +19,3 @@ cmd = "./start.sh"
 [variables]
 PYTHONUNBUFFERED = "1"
 PYTHONDONTWRITEBYTECODE = "1"
-NLTK_DATA = "/opt/nltk_data"
