@@ -179,8 +179,8 @@ class PostgreSQLVectorStore:
             
             self.engine = create_engine(
                 settings.get_database_url(),
-                pool_size=5,
-                max_overflow=10,
+                pool_size=3,
+                max_overflow=5,
                 pool_timeout=30,
                 pool_recycle=3600,
                 echo=settings.debug,
@@ -268,27 +268,48 @@ class PostgreSQLVectorStore:
     
 
     def _configure_vector_search_indexes(self) -> None:
-        """Create ANN index for pgvector and tune probe settings."""
+        """Create ANN index for pgvector when corpus size is large enough."""
         log_function_call(self.logger, "_configure_vector_search_indexes")
 
         try:
             with self.engine.connect() as conn:
-                conn.execute(text("SET maintenance_work_mem = '64MB'"))
+                row_count = conn.execute(text("SELECT COUNT(*) FROM document_chunks")).scalar() or 0
+
+                # For smaller datasets, a sequential scan is typically more accurate/faster than ANN.
+                # GIN index for full-text search (always create regardless of corpus size)
                 conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_document_chunks_text_fts
+                    ON document_chunks USING GIN(to_tsvector('english', text))
+                """))
+                conn.commit()
+                self.logger.info("GIN full-text search index created/verified")
+
+                if row_count < 1000:
+                    self.logger.info("Skipping ivfflat index for small corpus", row_count=row_count)
+                    conn.execute(text("ANALYZE document_chunks"))
+                    conn.commit()
+                    log_function_result(self.logger, "_configure_vector_search_indexes", result=f"skipped_small_corpus:{row_count}")
+                    return
+
+                lists = max(10, int(row_count ** 0.5))
+                conn.execute(text("SET maintenance_work_mem = '64MB'"))
+                conn.execute(text(f"""
                     CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_ivfflat
                     ON document_chunks
                     USING ivfflat (embedding vector_cosine_ops)
-                    WITH (lists = 100)
+                    WITH (lists = {lists})
                 """))
                 conn.execute(text("ANALYZE document_chunks"))
                 conn.commit()
+                self.logger.info("Configured ivfflat index", row_count=row_count, lists=lists)
+
             log_function_result(self.logger, "_configure_vector_search_indexes")
         except Exception as e:
             self.logger.warning("Could not create ivfflat index, falling back to sequential scan", error=str(e))
             log_function_result(self.logger, "_configure_vector_search_indexes", error=e)
 
     def _verify_similarity_query_plan(self, limit: int = 10) -> Dict[str, Any]:
-        """Inspect query plan for vector search to confirm index usage behavior."""
+        """Inspect query plan for vector search to confirm index usage behaviour."""
         log_function_call(self.logger, "_verify_similarity_query_plan", limit=limit)
 
         sample_embedding = "[" + ",".join(["0"] * settings.embedding_dimension) + "]"
@@ -529,6 +550,52 @@ class PostgreSQLVectorStore:
             log_function_result(self.logger, "similarity_search", error=e)
             raise
     
+    async def fts_search(self, query: str, limit: int = 10) -> List[Dict]:
+        """Perform full-text search using PostgreSQL tsvector/ts_rank (no in-memory index)."""
+        log_function_call(self.logger, "fts_search", query_length=len(query), limit=limit)
+
+        try:
+            with self.SessionLocal() as session:
+                sql = text("""
+                    SELECT
+                        chunk_id,
+                        document_id,
+                        document_name,
+                        text,
+                        chunk_metadata,
+                        ts_rank_cd(
+                            to_tsvector('english', text),
+                            plainto_tsquery('english', :query)
+                        ) AS rank
+                    FROM document_chunks
+                    WHERE to_tsvector('english', text) @@ plainto_tsquery('english', :query)
+                    ORDER BY rank DESC
+                    LIMIT :limit
+                """)
+
+                rows = session.execute(sql, {"query": query, "limit": limit}).fetchall()
+
+                results = [
+                    {
+                        'chunk_id': row.chunk_id,
+                        'document_id': row.document_id,
+                        'document_name': row.document_name,
+                        'text': row.text,
+                        'bm25_score': float(row.rank),
+                        'metadata': json.loads(row.chunk_metadata) if row.chunk_metadata else None,
+                    }
+                    for row in rows
+                ]
+
+            self.logger.debug("FTS search completed", results_count=len(results))
+            log_function_result(self.logger, "fts_search", result=f"Found {len(results)} results")
+            return results
+
+        except Exception as e:
+            self.logger.warning("FTS search failed, returning empty results", error=str(e))
+            log_function_result(self.logger, "fts_search", error=e)
+            return []
+
     async def store_chat_message(self, chat_message: ChatMessage, user_ip: Optional[str] = None) -> None:
         """Store chat message in database"""
         log_function_call(self.logger, "store_chat_message", message_id=chat_message.message_id)
@@ -702,7 +769,7 @@ class PostgreSQLVectorStore:
 
 # Convenience functions for external use
 async def create_vector_store() -> PostgreSQLVectorStore:
-    """Create and initialize vector store"""
+    """Create and initialise vector store"""
     return PostgreSQLVectorStore()
 
 

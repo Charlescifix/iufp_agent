@@ -101,14 +101,14 @@ class EmbeddingService:
             self._test_api_connection()
             
             self.logger.info(
-                "OpenAI client initialized successfully",
+                "OpenAI client initialised successfully",
                 model=settings.embedding_model,
                 dimension=settings.embedding_dimension
             )
             log_function_result(self.logger, "_setup_openai_client")
             
         except Exception as e:
-            error = EmbeddingSecurityError(f"Failed to initialize OpenAI client: {str(e)}")
+            error = EmbeddingSecurityError(f"Failed to initialise OpenAI client: {str(e)}")
             log_function_result(self.logger, "_setup_openai_client", error=error)
             raise error
     
@@ -314,7 +314,7 @@ class EmbeddingService:
             raise
     
     async def create_embeddings_batch(self, texts: List[str], chunk_ids: Optional[List[str]] = None) -> List[EmbeddingResult]:
-        """Create embeddings for multiple texts with batch optimization"""
+        """Create embeddings for multiple texts with batch optimisation"""
         log_function_call(self.logger, "create_embeddings_batch", batch_size=len(texts))
         
         if not texts:

@@ -198,13 +198,13 @@ async def lifespan(app: FastAPI):
     setup_logging()
     logger.info("IUFP RAG Chat API starting up...")
     
-    # Initialize components
+    # Initialise components
     try:
         # Test database connection
         vector_store = PostgreSQLVectorStore()
         await vector_store.get_document_stats()
-        
-        # Initialize retriever
+
+        # Initialise retriever
         retriever = HybridRetriever()
         
         # Store in app state
@@ -214,10 +214,10 @@ async def lifespan(app: FastAPI):
         app.state.health_state = HealthcheckState(settings.healthcheck_cache_ttl_seconds)
         app.state.chat_service = ChatService(vector_store, retriever, app.state.openai_client)
         
-        logger.info("All components initialized successfully")
+        logger.info("All components initialised successfully")
         
     except Exception as e:
-        logger.error("Failed to initialize components", error=str(e))
+        logger.error("Failed to initialise components", error=str(e))
         raise
     
     yield
@@ -355,7 +355,7 @@ RESPONSE FORMATTING:
 
 CONTENT GUIDELINES:
 - Start with brief explanation, then use sections like **Purpose:**, **Duration:**, **Benefits:**
-- Summarize key points only - no unnecessary details
+- Summarise key points only - no unnecessary details
 - If missing info: "For detailed guidance, visit www.iufp.org.uk or book a consultation"
 - Be direct and actionable
 - Maintain helpful, professional tone
