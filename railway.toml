@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "pip install --no-cache-dir -r requirements-prod.txt"
+buildCommand = "pip install --no-cache-dir -r requirements-prod.txt && echo 'Build complete'"
 
 [deploy]
 startCommand = "./start.sh"
