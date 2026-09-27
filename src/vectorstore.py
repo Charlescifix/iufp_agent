@@ -196,6 +196,9 @@ class PostgreSQLVectorStore:
                 max_overflow=5,
                 pool_timeout=30,
                 pool_recycle=3600,
+                # Validate pooled connections before use, so a DB restart or dropped idle
+                # connection is transparently replaced instead of failing a user request
+                pool_pre_ping=True,
                 echo=settings.debug,
                 connect_args=connect_args
             )
