@@ -1,7 +1,7 @@
 import asyncio
 import time
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import OrderedDict
 from typing import List, Dict, Optional, Any
 from contextlib import asynccontextmanager
@@ -10,19 +10,17 @@ import secrets
 import json
 
 from fastapi import FastAPI, HTTPException, Depends, Request, Security, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
+from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from openai import AsyncOpenAI
-from passlib.context import CryptContext
-from jose import JWTError, jwt
 import structlog
 
 from .config import settings
@@ -38,7 +36,8 @@ class ChatRequest(BaseModel):
     max_results: Optional[int] = Field(settings.max_retrieval_results, ge=1, le=20, description="Maximum search results")
     include_sources: Optional[bool] = Field(True, description="Include source citations")
     
-    @validator('message')
+    @field_validator('message')
+    @classmethod
     def validate_message(cls, v):
         # Additional message validation
         if not v.strip():
@@ -112,7 +111,6 @@ def get_client_ip(request: Request) -> str:
 class SecurityManager:
     def __init__(self):
         self.logger = get_logger(__name__)
-        self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         
         # Rate limiting
         self.limiter = Limiter(key_func=get_client_ip)
@@ -127,31 +125,11 @@ class SecurityManager:
     
     def validate_api_key(self, api_key: str) -> bool:
         """Validate API key"""
-        if not api_key:
+        if not api_key or not settings.admin_api_key:
             return False
         
-        # Check against admin API key
-        if api_key == settings.admin_api_key:
-            return True
-        
-        # Add more API key validation logic here
-        return False
-    
-    def create_jwt_token(self, data: Dict[str, Any]) -> str:
-        """Create JWT token"""
-        to_encode = data.copy()
-        expire = datetime.utcnow() + timedelta(hours=settings.jwt_expiration_hours)
-        to_encode.update({"exp": expire})
-        
-        return jwt.encode(to_encode, settings.secret_key, algorithm=settings.jwt_algorithm)
-    
-    def verify_jwt_token(self, token: str) -> Dict[str, Any]:
-        """Verify JWT token"""
-        try:
-            payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
-            return payload
-        except JWTError:
-            raise ChatAPISecurityError("Invalid token")
+        # Constant-time comparison so the key can't be guessed via response timing
+        return secrets.compare_digest(api_key.encode(), settings.admin_api_key.encode())
     
     def log_security_event(self, event_type: str, request: Request, details: Dict[str, Any]):
         """Log security events with request context"""
@@ -173,7 +151,6 @@ logger = get_logger(__name__)
 
 # API Key authentication
 api_key_header = APIKeyHeader(name=settings.api_key_header, auto_error=False)
-security = HTTPBearer(auto_error=False)
 
 
 # Dependency functions
@@ -186,23 +163,6 @@ async def get_api_key(api_key: Optional[str] = Security(api_key_header)):
         )
     return api_key
 
-
-async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Security(security)):
-    """Get current user from JWT token"""
-    if not credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated"
-        )
-    
-    try:
-        payload = security_manager.verify_jwt_token(credentials.credentials)
-        return payload
-    except ChatAPISecurityError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials"
-        )
 
 
 # Application setup

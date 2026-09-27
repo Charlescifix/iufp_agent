@@ -4,10 +4,8 @@ import json
 import time
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, asdict
-import numpy as np
 import openai
 from openai import OpenAI, AsyncOpenAI
-import structlog
 
 from .config import settings
 from .logger import get_logger, log_function_call, log_function_result, log_security_event

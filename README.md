@@ -29,8 +29,8 @@ dashboard, not in the repo:
 
 ## Configuration
 
-Set as environment variables (Railway) or in a local `.env`. Only declared settings are allowed:
-an unknown key in `.env` stops the app from starting.
+Set as environment variables (Railway) or in a local `.env`. Unknown keys are ignored, so check
+spelling if a setting seems to have no effect.
 
 | Variable | Required | Default |
 |---|---|---|
