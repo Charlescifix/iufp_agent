@@ -94,13 +94,29 @@ class ChatAPISecurityError(Exception):
     pass
 
 
+def get_client_ip(request: Request) -> str:
+    """Resolve the real client IP behind a reverse proxy.
+
+    Uses the X-Forwarded-For entry appended by our own proxy (counting
+    trusted_proxy_hops from the right). The leftmost entries are client-supplied
+    and can be spoofed, so they are never trusted.
+    """
+    hops = settings.trusted_proxy_hops
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if hops > 0 and forwarded_for:
+        hosts = [h.strip() for h in forwarded_for.split(",") if h.strip()]
+        if len(hosts) >= hops:
+            return hosts[-hops]
+    return get_remote_address(request)
+
+
 class SecurityManager:
     def __init__(self):
         self.logger = get_logger(__name__)
         self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         
         # Rate limiting
-        self.limiter = Limiter(key_func=get_remote_address)
+        self.limiter = Limiter(key_func=get_client_ip)
         
         # Session management
         self.active_sessions = {}
@@ -144,7 +160,7 @@ class SecurityManager:
             event_type,
             {
                 **details,
-                "client_ip": get_remote_address(request),
+                "client_ip": get_client_ip(request),
                 "user_agent": request.headers.get("user-agent", ""),
                 "timestamp": datetime.utcnow().isoformat()
             },
@@ -477,8 +493,8 @@ Format: Brief, well-spaced responses with bold titles and clear section breaks."
             raise
 
 
-# Static file serving for images and assets
-app.mount("/static", StaticFiles(directory="."), name="static")
+# Static file serving for images and assets (only the static/ folder, never the project root)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Static file serving
 @app.get("/")
@@ -499,7 +515,7 @@ async def chat_endpoint(
     request: Request
 ):
     """Main chat endpoint with security and rate limiting"""
-    client_ip = get_remote_address(request)
+    client_ip = get_client_ip(request)
     
     try:
         # Process message
@@ -647,7 +663,7 @@ async def get_chat_history(
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """Custom HTTP exception handler with logging"""
-    client_ip = get_remote_address(request)
+    client_ip = get_client_ip(request)
     
     if exc.status_code >= 400:
         security_manager.log_security_event(
@@ -665,7 +681,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     """General exception handler"""
-    client_ip = get_remote_address(request)
+    client_ip = get_client_ip(request)
     
     logger.error("Unhandled exception", client_ip=client_ip, error=str(exc))
     

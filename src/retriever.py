@@ -31,7 +31,6 @@ class RetrievalConfig:
     bm25_weight: float = 0.3
     max_results: int = 10
     min_score_threshold: float = 0.1
-    enable_query_expansion: bool = True
     enable_reranking: bool = True
 
 
@@ -140,31 +139,6 @@ class HybridRetriever:
         except Exception as e:
             log_function_result(self.logger, "_fts_search", error=e)
             return []
-    
-    def _expand_query(self, query: str) -> str:
-        """Expand query with synonyms and related terms"""
-        if not self.config.enable_query_expansion:
-            return query
-        
-        # Simple query expansion (can be enhanced with word embeddings)
-        expansion_map = {
-            'ai': 'artificial intelligence machine learning',
-            'ml': 'machine learning artificial intelligence',
-            'nlp': 'natural language processing text analysis',
-            'api': 'application programming interface endpoint',
-            'db': 'database storage data',
-            'ui': 'user interface frontend design',
-            'ux': 'user experience usability design'
-        }
-        
-        expanded_query = query
-        query_lower = query.lower()
-        
-        for term, expansion in expansion_map.items():
-            if term in query_lower:
-                expanded_query += f" {expansion}"
-        
-        return expanded_query
     
     def _normalize_scores(self, scores: List[float]) -> List[float]:
         """Normalize scores to 0-1 range"""
@@ -285,13 +259,6 @@ class HybridRetriever:
             # Use provided config or default
             if config:
                 self.config = config
-            
-            # Expand query if enabled
-            if self.config.enable_query_expansion:
-                expanded_query = self._expand_query(query)
-                if expanded_query != query:
-                    self.logger.debug("Query expanded", original=query[:100], expanded=expanded_query[:100])
-                    query = expanded_query
             
             # Perform both searches concurrently
             search_limit = min(self.config.max_results * 2, 50)  # Get more results for better ranking

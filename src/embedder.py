@@ -128,10 +128,11 @@ class EmbeddingService:
             
             actual_dimension = len(response.data[0].embedding)
             if actual_dimension != settings.embedding_dimension:
-                self.logger.warning(
-                    "Embedding dimension mismatch",
-                    expected=settings.embedding_dimension,
-                    actual=actual_dimension
+                # Fail fast: a mismatch makes every search fail, which would otherwise
+                # silently degrade chat to answers with no retrieved context.
+                raise EmbeddingSecurityError(
+                    f"Embedding dimension mismatch: {settings.embedding_model} returns "
+                    f"{actual_dimension} dims but EMBEDDING_DIMENSION is {settings.embedding_dimension}"
                 )
             
             self.logger.debug("API connection test successful")

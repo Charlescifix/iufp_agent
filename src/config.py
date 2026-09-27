@@ -43,7 +43,9 @@ class Settings(BaseSettings):
     # Rate Limiting
     rate_limit_requests: int = 100
     rate_limit_period: int = 3600
-    
+    # Number of reverse proxies in front of the app (Railway edge = 1); 0 = use socket IP
+    trusted_proxy_hops: int = 1
+
     # Application Configuration
     debug: bool = False
     log_level: str = "INFO"

@@ -708,8 +708,18 @@ Responsive breakpoints: 480px, 768px, 1200px
             sendButton.disabled = false;
         }
 
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         function formatMessage(content) {
-            // Convert markdown formatting to HTML
+            // Escape first so model output can never inject markup, then apply our own formatting
+            content = escapeHtml(content);
             content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
             content = content.replace(/\*(.*?)\*/g, '<em>$1</em>');
             
@@ -768,7 +778,11 @@ Responsive breakpoints: 480px, 768px, 1200px
             if (sources && sources.length > 0) {
                 const sourcesDiv = document.createElement('div');
                 sourcesDiv.className = 'message-sources';
-                sourcesDiv.innerHTML = `<strong>Sources:</strong> ${sources.join(', ')}`;
+                const documentNames = [...new Set(sources.map(s => s.document_name))];
+                const label = document.createElement('strong');
+                label.textContent = 'Sources:';
+                sourcesDiv.appendChild(label);
+                sourcesDiv.appendChild(document.createTextNode(' ' + documentNames.join(', ')));
                 messageContent.appendChild(sourcesDiv);
             }
             
