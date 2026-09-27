@@ -20,8 +20,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-import openai
-from openai import OpenAI
+from openai import AsyncOpenAI
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 import structlog
@@ -220,13 +219,17 @@ async def lifespan(app: FastAPI):
         vector_store = PostgreSQLVectorStore()
         await vector_store.get_document_stats()
 
-        # Initialise retriever
-        retriever = HybridRetriever()
+        # Initialise retriever (shares the vector store's engine and connection pool)
+        retriever = HybridRetriever(vector_store=vector_store)
         
         # Store in app state
         app.state.vector_store = vector_store
         app.state.retriever = retriever
-        app.state.openai_client = OpenAI(api_key=settings.openai_api_key)
+        app.state.openai_client = AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            timeout=settings.openai_timeout_seconds,
+            max_retries=settings.openai_max_retries
+        )
         app.state.health_state = HealthcheckState(settings.healthcheck_cache_ttl_seconds)
         app.state.chat_service = ChatService(vector_store, retriever, app.state.openai_client)
         
@@ -240,6 +243,9 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("IUFP RAG Chat API shutting down...")
+    await app.state.openai_client.close()
+    await app.state.retriever.embedding_service.close()
+    app.state.vector_store.close()
 
 
 # Create FastAPI app
@@ -326,7 +332,7 @@ class HealthcheckState:
 
 # Chat API Implementation
 class ChatService:
-    def __init__(self, vector_store: PostgreSQLVectorStore, retriever: HybridRetriever, openai_client: OpenAI):
+    def __init__(self, vector_store: PostgreSQLVectorStore, retriever: HybridRetriever, openai_client: AsyncOpenAI):
         self.vector_store = vector_store
         self.retriever = retriever
         self.openai_client = openai_client
@@ -382,7 +388,7 @@ CONTEXT:
 Format: Brief, well-spaced responses with bold titles and clear section breaks."""
             
             # Generate response
-            response = self.openai_client.chat.completions.create(
+            response = await self.openai_client.chat.completions.create(
                 model=settings.chat_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -563,22 +569,16 @@ async def health_check():
         cached = app.state.health_state.get_cached()
         if cached:
             return cached
-        # Check database
+        # Check database (the retriever shares this store, so one query covers both)
         db_status = "healthy"
         try:
             await app.state.vector_store.get_document_stats()
         except Exception:
             db_status = "unhealthy"
-        
-        # Check retriever
-        retriever_status = "healthy"
-        try:
-            await app.state.retriever.get_retrieval_stats()
-        except Exception:
-            retriever_status = "unhealthy"
-        
+        retriever_status = db_status
+
         # Overall status
-        overall_status = "healthy" if db_status == "healthy" and retriever_status == "healthy" else "degraded"
+        overall_status = "healthy" if db_status == "healthy" else "degraded"
         
         response = HealthResponse(
             status=overall_status,

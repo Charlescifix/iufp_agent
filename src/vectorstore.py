@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import json
 import time
 from typing import List, Dict, Optional, Tuple, Any, Union
@@ -55,6 +56,18 @@ class ChatMessage:
 
 class VectorStoreSecurityError(Exception):
     pass
+
+
+def run_in_thread(fn):
+    """Expose a blocking DB method as awaitable, running it in a worker thread.
+
+    Keeps the event loop free while psycopg2 waits on the network, so a single
+    uvicorn worker can serve concurrent requests without an async DB driver.
+    """
+    @functools.wraps(fn)
+    async def wrapper(*args, **kwargs):
+        return await asyncio.to_thread(fn, *args, **kwargs)
+    return wrapper
 
 
 Base = declarative_base()
@@ -257,7 +270,8 @@ class PostgreSQLVectorStore:
             Base.metadata.create_all(bind=self.engine)
             
             self._configure_vector_search_indexes()
-            self._verify_similarity_query_plan()
+            # Checked once here instead of on every search (saves a round-trip per query)
+            self._ivfflat_enabled = self._has_ivfflat_index()
             self.logger.info("Database tables created/verified successfully")
             log_function_result(self.logger, "_create_tables")
             
@@ -308,34 +322,9 @@ class PostgreSQLVectorStore:
             self.logger.warning("Could not create ivfflat index, falling back to sequential scan", error=str(e))
             log_function_result(self.logger, "_configure_vector_search_indexes", error=e)
 
-    def _verify_similarity_query_plan(self, limit: int = 10) -> Dict[str, Any]:
-        """Inspect query plan for vector search to confirm index usage behaviour."""
-        log_function_call(self.logger, "_verify_similarity_query_plan", limit=limit)
-
-        sample_embedding = "[" + ",".join(["0"] * settings.embedding_dimension) + "]"
-        sql = text(f"""
-            EXPLAIN (FORMAT TEXT)
-            SELECT chunk_id
-            FROM document_chunks
-            ORDER BY embedding <=> CAST(:embedding AS vector)
-            LIMIT {limit}
-        """)
-
-        try:
-            with self.engine.connect() as conn:
-                result = conn.execute(sql, {"embedding": sample_embedding})
-                lines = [row[0] for row in result.fetchall()]
-
-            index_in_plan = any("Index" in line or "ivfflat" in line.lower() for line in lines)
-            plan_summary = {"index_detected": index_in_plan, "plan_lines": lines[:6]}
-            self.logger.info("Vector query plan inspected", **plan_summary)
-            log_function_result(self.logger, "_verify_similarity_query_plan", result=plan_summary)
-            return plan_summary
-        except Exception as e:
-            self.logger.warning("Query plan check failed", error=str(e))
-            log_function_result(self.logger, "_verify_similarity_query_plan", error=e)
-            return {"index_detected": False, "error": str(e)}
-
+    def close(self) -> None:
+        """Release pooled database connections."""
+        self.engine.dispose()
 
     def _has_ivfflat_index(self) -> bool:
         """Check if ivfflat index exists for document chunk embeddings."""
@@ -385,7 +374,8 @@ class PostgreSQLVectorStore:
         
         log_function_result(self.logger, "_validate_chunk_data")
     
-    async def store_chunk_with_embedding(self, chunk: DocumentChunk, embedding: List[float]) -> None:
+    @run_in_thread
+    def store_chunk_with_embedding(self, chunk: DocumentChunk, embedding: List[float]) -> None:
         """Store document chunk with its embedding"""
         log_function_call(self.logger, "store_chunk_with_embedding", chunk_id=chunk.chunk_id)
         
@@ -439,7 +429,8 @@ class PostgreSQLVectorStore:
             log_function_result(self.logger, "store_chunk_with_embedding", error=e)
             raise
     
-    async def store_chunks_batch(self, chunks_with_embeddings: List[Tuple[DocumentChunk, List[float]]]) -> None:
+    @run_in_thread
+    def store_chunks_batch(self, chunks_with_embeddings: List[Tuple[DocumentChunk, List[float]]]) -> None:
         """Store multiple chunks with embeddings in batch"""
         log_function_call(self.logger, "store_chunks_batch", batch_size=len(chunks_with_embeddings))
         
@@ -503,7 +494,8 @@ class PostgreSQLVectorStore:
             log_function_result(self.logger, "store_chunks_batch", error=e)
             raise
     
-    async def similarity_search(self, query_embedding: List[float], limit: int = 10, document_id: Optional[str] = None) -> List[SearchResult]:
+    @run_in_thread
+    def similarity_search(self, query_embedding: List[float], limit: int = 10, document_id: Optional[str] = None) -> List[SearchResult]:
         """Perform similarity search using vector embeddings"""
         log_function_call(self.logger, "similarity_search", limit=limit, document_id=document_id)
         
@@ -520,7 +512,7 @@ class PostgreSQLVectorStore:
                 raise error
             
             with self.SessionLocal() as session:
-                if self._has_ivfflat_index():
+                if self._ivfflat_enabled:
                     session.execute(text("SET ivfflat.probes = 10"))
                 # Build query with similarity search
                 query = session.query(
@@ -569,7 +561,8 @@ class PostgreSQLVectorStore:
             log_function_result(self.logger, "similarity_search", error=e)
             raise
     
-    async def fts_search(self, query: str, limit: int = 10) -> List[Dict]:
+    @run_in_thread
+    def fts_search(self, query: str, limit: int = 10) -> List[Dict]:
         """Perform full-text search using PostgreSQL tsvector/ts_rank (no in-memory index)."""
         log_function_call(self.logger, "fts_search", query_length=len(query), limit=limit)
 
@@ -615,7 +608,8 @@ class PostgreSQLVectorStore:
             log_function_result(self.logger, "fts_search", error=e)
             return []
 
-    async def store_chat_message(self, chat_message: ChatMessage, user_ip: Optional[str] = None) -> None:
+    @run_in_thread
+    def store_chat_message(self, chat_message: ChatMessage, user_ip: Optional[str] = None) -> None:
         """Store chat message in database"""
         log_function_call(self.logger, "store_chat_message", message_id=chat_message.message_id)
         
@@ -665,7 +659,8 @@ class PostgreSQLVectorStore:
             log_function_result(self.logger, "store_chat_message", error=e)
             raise
     
-    async def get_chat_history(self, session_id: str, limit: int = 50) -> List[ChatMessage]:
+    @run_in_thread
+    def get_chat_history(self, session_id: str, limit: int = 50) -> List[ChatMessage]:
         """Retrieve chat history for a session"""
         log_function_call(self.logger, "get_chat_history", session_id=session_id, limit=limit)
         
@@ -719,7 +714,8 @@ class PostgreSQLVectorStore:
             log_function_result(self.logger, "get_chat_history", error=e)
             raise
     
-    async def delete_document(self, document_id: str) -> int:
+    @run_in_thread
+    def delete_document(self, document_id: str) -> int:
         """Delete all chunks for a document"""
         log_function_call(self.logger, "delete_document", document_id=document_id)
         
@@ -749,7 +745,8 @@ class PostgreSQLVectorStore:
             log_function_result(self.logger, "delete_document", error=e)
             raise
     
-    async def get_document_stats(self) -> Dict[str, Any]:
+    @run_in_thread
+    def get_document_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         log_function_call(self.logger, "get_document_stats")
         

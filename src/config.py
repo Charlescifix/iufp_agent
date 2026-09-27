@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
     chat_model: str = "gpt-4o-mini"
+    openai_timeout_seconds: float = 20.0
+    openai_max_retries: int = 2
+    query_embedding_cache_size: int = 256
     
     # Security Configuration
     secret_key: str = ""

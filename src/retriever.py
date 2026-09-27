@@ -1,5 +1,6 @@
 import asyncio
 import time
+from collections import OrderedDict
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, asdict
 import re
@@ -39,19 +40,23 @@ class RetrievalSecurityError(Exception):
 
 
 class HybridRetriever:
-    def __init__(self):
+    def __init__(self, vector_store: Optional[PostgreSQLVectorStore] = None):
         self.logger = get_logger(__name__)
-        self._setup_components()
+        self._setup_components(vector_store)
 
-        # Retrieval configuration
+        # Default retrieval configuration (per-request configs are passed to search())
         self.config = RetrievalConfig()
+
+        # LRU of normalised query -> embedding; repeated questions skip the embedding API call
+        self._embedding_cache: "OrderedDict[str, List[float]]" = OrderedDict()
         
-    def _setup_components(self) -> None:
+    def _setup_components(self, vector_store: Optional[PostgreSQLVectorStore]) -> None:
         """Initialise vector store and embedding service"""
         log_function_call(self.logger, "_setup_components")
         
         try:
-            self.vector_store = PostgreSQLVectorStore()
+            # Reuse the caller's store so the app keeps a single engine and connection pool
+            self.vector_store = vector_store or PostgreSQLVectorStore()
             self.embedding_service = EmbeddingService()
             
             self.logger.info("Hybrid retriever components initialised successfully")
@@ -109,9 +114,7 @@ class HybridRetriever:
         log_function_call(self.logger, "_vector_search", query_length=len(query), limit=limit)
         
         try:
-            # Create query embedding
-            embedding_result = await self.embedding_service.create_embedding(query)
-            query_embedding = embedding_result.embedding
+            query_embedding = await self._get_query_embedding(query)
             
             # Perform similarity search
             results = await self.vector_store.similarity_search(
@@ -127,6 +130,20 @@ class HybridRetriever:
             log_function_result(self.logger, "_vector_search", error=e)
             raise
     
+    async def _get_query_embedding(self, query: str) -> List[float]:
+        """Embed a query, reusing cached embeddings for repeated questions."""
+        cache_key = " ".join(query.lower().split())
+        cached = self._embedding_cache.get(cache_key)
+        if cached is not None:
+            self._embedding_cache.move_to_end(cache_key)
+            return cached
+
+        embedding_result = await self.embedding_service.create_embedding(query)
+        self._embedding_cache[cache_key] = embedding_result.embedding
+        while len(self._embedding_cache) > settings.query_embedding_cache_size:
+            self._embedding_cache.popitem(last=False)
+        return embedding_result.embedding
+
     async def _fts_search(self, query: str, limit: int) -> List[Dict]:
         """Perform full-text search via PostgreSQL (no in-memory index)."""
         log_function_call(self.logger, "_fts_search", query_length=len(query), limit=limit)
@@ -153,7 +170,7 @@ class HybridRetriever:
         
         return [(score - min_score) / (max_score - min_score) for score in scores]
     
-    def _combine_results(self, vector_results: List[SearchResult], bm25_results: List[Dict]) -> List[RetrievalResult]:
+    def _combine_results(self, vector_results: List[SearchResult], bm25_results: List[Dict], config: RetrievalConfig) -> List[RetrievalResult]:
         """Combine and rank vector and BM25 results"""
         log_function_call(self.logger, "_combine_results", 
                          vector_count=len(vector_results), bm25_count=len(bm25_results))
@@ -209,12 +226,12 @@ class HybridRetriever:
         for i, result in enumerate(combined_results):
             # Weighted combination of normalized scores
             hybrid_score = (
-                self.config.vector_weight * normalized_vector[i] +
-                self.config.bm25_weight * normalized_bm25[i]
+                config.vector_weight * normalized_vector[i] +
+                config.bm25_weight * normalized_bm25[i]
             )
             
             # Apply minimum score threshold
-            if hybrid_score >= self.config.min_score_threshold:
+            if hybrid_score >= config.min_score_threshold:
                 retrieval_result = RetrievalResult(
                     chunk_id=result['chunk_id'],
                     document_id=result['document_id'],
@@ -234,7 +251,7 @@ class HybridRetriever:
             result.rank = i + 1
         
         # Limit results
-        final_results = final_results[:self.config.max_results]
+        final_results = final_results[:config.max_results]
         
         self.logger.info(
             "Results combined successfully",
@@ -256,12 +273,11 @@ class HybridRetriever:
             # Validate query
             self._validate_query(query)
             
-            # Use provided config or default
-            if config:
-                self.config = config
+            # Per-request config; never stored on self, so concurrent requests can't clash
+            config = config or self.config
             
             # Perform both searches concurrently
-            search_limit = min(self.config.max_results * 2, 50)  # Get more results for better ranking
+            search_limit = min(config.max_results * 2, 50)  # Get more results for better ranking
             
             vector_task = asyncio.create_task(self._vector_search(query, search_limit))
             fts_task = asyncio.create_task(self._fts_search(query, search_limit))
@@ -269,10 +285,10 @@ class HybridRetriever:
             vector_results, bm25_results = await asyncio.gather(vector_task, fts_task)
             
             # Combine and rank results
-            final_results = self._combine_results(vector_results, bm25_results)
+            final_results = self._combine_results(vector_results, bm25_results, config)
             
             # Re-ranking (if enabled)
-            if self.config.enable_reranking and len(final_results) > 1:
+            if config.enable_reranking and len(final_results) > 1:
                 final_results = await self._rerank_results(query, final_results)
             
             processing_time = time.time() - start_time
