@@ -329,6 +329,12 @@ class PostgreSQLVectorStore:
         """Release pooled database connections."""
         self.engine.dispose()
 
+    @run_in_thread
+    def ping(self) -> None:
+        """Cheapest possible liveness check (no table scans)."""
+        with self.engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+
     def _has_ivfflat_index(self) -> bool:
         """Check if ivfflat index exists for document chunk embeddings."""
         try:
