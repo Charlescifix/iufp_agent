@@ -304,7 +304,7 @@ class ChatService:
     
     def _create_cache_key(self, query: str, context_chunks: List[RetrievalResult]) -> str:
         normalized_query = " ".join(query.lower().split())
-        context_signature = "|".join([f"{c.chunk_id}:{round(c.hybrid_score, 3)}" for c in context_chunks[:3]])
+        context_signature = "|".join([f"{c.chunk_id}:{round(c.hybrid_score, 3)}" for c in context_chunks])
         return hashlib.sha256(f"{normalized_query}::{context_signature}".encode("utf-8")).hexdigest()
 
     async def generate_response(self, query: str, context_chunks: List[RetrievalResult]) -> str:
@@ -320,11 +320,21 @@ class ChatService:
             # Build context from retrieved chunks
             context_text = "\n\n".join([
                 f"Source: {chunk.document_name}\n{chunk.text}"
-                for chunk in context_chunks[:3]  # Limit context
-            ]) if context_chunks else "No specific context available - provide general IUFP guidance."
-            
+                for chunk in context_chunks
+            ]) if context_chunks else "(No relevant IUFP documents were found for this message.)"
+
             # Create system prompt
             system_prompt = f"""You are IUFP's AI assistant, helping with UK university applications and student visas.
+
+ACCURACY RULES (most important):
+- Answer ONLY from the IUFP documents in CONTEXT. Do not use outside knowledge.
+- If CONTEXT does not contain the answer, say you don't have that information in IUFP's guides and suggest visiting www.iufp.org.uk or booking a consultation. Never guess.
+- Never invent fees, amounts, dates, deadlines or requirements. Use figures exactly as they appear in CONTEXT, with the label CONTEXT gives them.
+- Never calculate, multiply or combine figures to produce a new amount; quote only amounts written in CONTEXT.
+- When giving fees or financial requirements, add that UK visa rules change and the user should confirm current figures on gov.uk.
+- Questions about UK study, student visas, dependants, fees or living in the UK as a student are in scope: if CONTEXT doesn't cover them, say it isn't in IUFP's guides rather than calling them off-topic.
+- For topics unrelated to UK study or student visas, politely say you can only help with those.
+- If the message is only a greeting or thanks, reply in one short sentence and offer help. Don't add sign-off lines like "let me know" to other answers.
 
 RESPONSE FORMATTING:
 - Maximum 120 words - be concise but complete
@@ -333,12 +343,10 @@ RESPONSE FORMATTING:
 - Use bullet points (•) with spaces for lists
 - Use numbered steps (1., 2., 3.) for processes
 - Each bullet point or section should have a blank line after it
-- NEVER say "not provided" or "document doesn't include"
 
 CONTENT GUIDELINES:
 - Start with brief explanation, then use sections like **Purpose:**, **Duration:**, **Benefits:**
 - Summarise key points only - no unnecessary details
-- If missing info: "For detailed guidance, visit www.iufp.org.uk or book a consultation"
 - Be direct and actionable
 - Maintain helpful, professional tone
 
@@ -355,8 +363,7 @@ Format: Brief, well-spaced responses with bold titles and clear section breaks."
                     {"role": "user", "content": query}
                 ],
                 max_tokens=settings.max_output_tokens,
-                temperature=0.7,
-                top_p=0.9
+                temperature=0.2
             )
             
             assistant_response = response.choices[0].message.content.strip()
@@ -398,7 +405,10 @@ Format: Brief, well-spaced responses with bold titles and clear section breaks."
             search_results = []
             try:
                 search_results = await self.retriever.search(request.message, retrieval_config)
-                self.logger.info(f"Retrieved {len(search_results)} search results")
+                # Keep only chunks genuinely about the question (absolute similarity, not the per-query
+                # normalised hybrid score), so off-topic questions get no misleading context
+                search_results = [r for r in search_results if r.vector_score >= settings.min_relevance_score]
+                self.logger.info(f"Retrieved {len(search_results)} relevant search results")
             except Exception as search_error:
                 self.logger.warning(f"Search failed, using fallback: {str(search_error)}")
                 # Continue with empty search results for fallback response
@@ -409,7 +419,7 @@ Format: Brief, well-spaced responses with bold titles and clear section breaks."
             # Create source citations
             sources = []
             if request.include_sources:
-                for result in search_results[:5]:  # Limit citations
+                for result in search_results:
                     source = SourceCitation(
                         chunk_id=result.chunk_id,
                         document_name=result.document_name,

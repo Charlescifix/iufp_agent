@@ -47,9 +47,13 @@ class Settings(BaseSettings):
     # Application Configuration
     debug: bool = False
     log_level: str = "INFO"
-    max_chunk_size: int = 500
-    chunk_overlap: int = 100
-    max_retrieval_results: int = 3
+    # ~1000 chars keeps table rows with their labels (500 split figures from what they describe)
+    max_chunk_size: int = 1000
+    chunk_overlap: int = 150
+    max_retrieval_results: int = 5
+    # Minimum cosine similarity for a chunk to be used as context. Measured on the IUFP corpus:
+    # in-scope questions scored 0.43-0.71, out-of-scope 0.07-0.35.
+    min_relevance_score: float = 0.38
     max_output_tokens: int = 200
     embedding_dimension: int = 1536
     response_cache_ttl_seconds: int = 180
