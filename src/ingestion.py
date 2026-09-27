@@ -1,7 +1,7 @@
 import asyncio
 import hashlib
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional, Tuple
 from pathlib import Path
 import boto3
@@ -271,8 +271,9 @@ class S3IngestionService:
                 should_download = force_redownload
                 if not should_download and os.path.exists(local_path):
                     # Compare file modification times or ETags
-                    local_mtime = datetime.fromtimestamp(os.path.getmtime(local_path))
-                    s3_mtime = obj['last_modified'].replace(tzinfo=None)
+                    # Compare in UTC; S3 timestamps are UTC-aware, local mtimes are epoch seconds
+                    local_mtime = datetime.fromtimestamp(os.path.getmtime(local_path), tz=timezone.utc)
+                    s3_mtime = obj['last_modified']
                     should_download = s3_mtime > local_mtime
                 
                 if should_download:

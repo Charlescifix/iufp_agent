@@ -782,6 +782,80 @@ class PostgreSQLVectorStore:
             log_function_result(self.logger, "get_document_stats", error=e)
             raise
 
+    @run_in_thread
+    def get_document_hashes(self) -> Dict[str, set]:
+        """Map each stored document name to the set of source hashes its chunks carry.
+
+        More than one hash for a name means stale chunks from an older version.
+        """
+        with self.SessionLocal() as session:
+            rows = session.query(DocumentChunkEntity.document_name, DocumentChunkEntity.source_hash)\
+                .distinct()\
+                .all()
+        hashes: Dict[str, set] = {}
+        for name, source_hash in rows:
+            hashes.setdefault(name, set()).add(source_hash)
+        return hashes
+
+    @run_in_thread
+    def replace_document_chunks(self, document_name: str, chunks_with_embeddings: List[Tuple[DocumentChunk, List[float]]]) -> Tuple[int, int]:
+        """Atomically replace every chunk of a document with a new version.
+
+        Returns (deleted_count, inserted_count). Readers never see a half-updated document.
+        """
+        log_function_call(self.logger, "replace_document_chunks", document_name=document_name,
+                          chunk_count=len(chunks_with_embeddings))
+
+        for chunk, embedding in chunks_with_embeddings:
+            self._validate_chunk_data(chunk, embedding)
+
+        with self.SessionLocal() as session:
+            deleted_count = session.query(DocumentChunkEntity)\
+                .filter_by(document_name=document_name)\
+                .delete(synchronize_session=False)
+            session.add_all([
+                DocumentChunkEntity(
+                    chunk_id=chunk.chunk_id,
+                    document_id=chunk.document_id,
+                    document_name=chunk.document_name,
+                    page_number=chunk.page_number,
+                    chunk_index=chunk.chunk_index,
+                    text=chunk.text,
+                    char_count=chunk.char_count,
+                    word_count=chunk.word_count,
+                    source_hash=chunk.source_hash,
+                    created_at=datetime.fromisoformat(chunk.created_at),
+                    section_title=chunk.section_title,
+                    chunk_metadata=json.dumps(chunk.metadata) if chunk.metadata else None,
+                    embedding=embedding
+                )
+                for chunk, embedding in chunks_with_embeddings
+            ])
+            session.commit()
+
+        self.logger.info("Document chunks replaced", document_name=document_name,
+                         deleted=deleted_count, inserted=len(chunks_with_embeddings))
+        return deleted_count, len(chunks_with_embeddings)
+
+    @run_in_thread
+    def delete_documents_by_name(self, document_names: List[str]) -> int:
+        """Delete all chunks for the given document names. Returns chunks deleted."""
+        if not document_names:
+            return 0
+        with self.SessionLocal() as session:
+            deleted_count = session.query(DocumentChunkEntity)\
+                .filter(DocumentChunkEntity.document_name.in_(document_names))\
+                .delete(synchronize_session=False)
+            session.commit()
+        self.logger.info("Documents deleted", document_names=document_names, deleted_chunks=deleted_count)
+        return deleted_count
+
+    @run_in_thread
+    def refresh_search_indexes(self) -> bool:
+        """Re-run index setup and ANALYZE after bulk changes. Returns whether ivfflat is in use."""
+        self._configure_vector_search_indexes()
+        return self._has_ivfflat_index()
+
 
 # Convenience functions for external use
 async def create_vector_store() -> PostgreSQLVectorStore:
