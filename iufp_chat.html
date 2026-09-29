@@ -255,23 +255,33 @@ Responsive breakpoints: 480px, 768px, 1200px
             border: 1px solid #e2e8f0;
         }
 
-        .message-sources {
-            margin-top: 10px;
-            padding: 10px;
-            background: rgba(0, 33, 71, 0.05);
-            border-radius: 10px;
-            font-size: 12px;
-            color: #64748b;
-        }
-
-        .message-sources strong {
-            color: #002147;
-        }
-
         .message.bot .message-content strong {
             color: #002147;
             font-weight: 700;
-            font-size: 1.05em;
+        }
+
+        .message.bot .message-content p,
+        .message.bot .message-content ul,
+        .message.bot .message-content ol {
+            margin: 0 0 10px;
+        }
+
+        .message.bot .message-content ul,
+        .message.bot .message-content ol {
+            padding-left: 22px;
+        }
+
+        .message.bot .message-content li + li {
+            margin-top: 4px;
+        }
+
+        .message.bot .message-content > :last-child {
+            margin-bottom: 0;
+        }
+
+        .message.bot .message-content a {
+            color: #0066cc;
+            text-decoration: underline;
         }
 
         .input-container {
@@ -681,7 +691,7 @@ Responsive breakpoints: 480px, 768px, 1200px
                     },
                     body: JSON.stringify({
                         message: message,
-                        include_sources: true
+                        include_sources: false
                     })
                 });
 
@@ -695,7 +705,7 @@ Responsive breakpoints: 480px, 768px, 1200px
                 hideTypingIndicator();
                 
                 // Add bot response
-                addMessage(data.response, 'bot', data.sources);
+                addMessage(data.response, 'bot');
                 
             } catch (error) {
                 hideTypingIndicator();
@@ -716,41 +726,53 @@ Responsive breakpoints: 480px, 768px, 1200px
                 .replace(/'/g, '&#39;');
         }
 
-        function formatMessage(content) {
-            // Escape first so model output can never inject markup, then apply our own formatting
-            content = escapeHtml(content);
-            content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-            content = content.replace(/\*(.*?)\*/g, '<em>$1</em>');
-            
-            // Split into paragraphs and format numbered lists
-            const lines = content.split('\n');
-            let formattedLines = [];
-            
-            for (let line of lines) {
-                line = line.trim();
-                if (!line) {
-                    formattedLines.push('<br>');
-                    continue;
-                }
-                
-                // Handle numbered lists (1., 2., etc.)
-                if (/^\d+\./.test(line)) {
-                    formattedLines.push('• ' + line.replace(/^\d+\.\s*/, ''));
-                }
-                // Handle bullet points
-                else if (line.startsWith('-') || line.startsWith('•')) {
-                    formattedLines.push(line);
-                }
-                // Regular paragraph
-                else {
-                    formattedLines.push(line);
-                }
-            }
-            
-            return formattedLines.join('<br>');
+        function formatInline(text) {
+            // text is already HTML-escaped, so the only markup here is what we add
+            return text
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/(^|[^*\w])\*(?!\s)([^*]+?)\*(?!\w)/g, '$1<em>$2</em>')
+                .replace(/\b(https?:\/\/[^\s<]+|www\.[^\s<]+)/g, (match) => {
+                    const url = match.replace(/[.,;:!?)]+$/, '');
+                    const trailing = match.slice(url.length);
+                    const href = url.startsWith('www.') ? 'https://' + url : url;
+                    return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>${trailing}`;
+                });
         }
 
-        function addMessage(content, sender, sources = null) {
+        function formatMessage(content) {
+            // Escape first so model output can never inject markup, then build paragraphs and lists
+            const lines = escapeHtml(content).split('\n');
+            const blocks = [];
+            let block = null;
+
+            for (const rawLine of lines) {
+                const line = rawLine.trim();
+                if (!line) {
+                    // Blank lines end a paragraph but not a list, so spaced-out list items stay one list
+                    if (block && block.type === 'p') block = null;
+                    continue;
+                }
+                // "**1. Title:**" keeps its bold: the opening ** is moved past the number
+                const ordered = line.match(/^(\*\*)?(\d+)[.)]\s+(.*)$/);
+                const bullet = line.match(/^[-•*]\s+(.*)$/);
+                const type = ordered ? 'ol' : bullet ? 'ul' : 'p';
+                const text = ordered ? (ordered[1] || '') + ordered[3] : bullet ? bullet[1] : line;
+
+                if (!block || block.type !== type) {
+                    block = { type, start: ordered ? Number(ordered[2]) : 1, items: [] };
+                    blocks.push(block);
+                }
+                block.items.push(formatInline(text));
+            }
+
+            return blocks.map((b) => {
+                if (b.type === 'p') return `<p>${b.items.join('<br>')}</p>`;
+                const start = b.type === 'ol' && b.start !== 1 ? ` start="${b.start}"` : '';
+                return `<${b.type}${start}>${b.items.map((i) => `<li>${i}</li>`).join('')}</${b.type}>`;
+            }).join('');
+        }
+
+        function addMessage(content, sender) {
             const chatMessages = document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${sender}`;
@@ -772,19 +794,7 @@ Responsive breakpoints: 480px, 768px, 1200px
             
             messageDiv.appendChild(avatar);
             messageDiv.appendChild(messageContent);
-            
-            // Add sources if available
-            if (sources && sources.length > 0) {
-                const sourcesDiv = document.createElement('div');
-                sourcesDiv.className = 'message-sources';
-                const documentNames = [...new Set(sources.map(s => s.document_name))];
-                const label = document.createElement('strong');
-                label.textContent = 'Sources:';
-                sourcesDiv.appendChild(label);
-                sourcesDiv.appendChild(document.createTextNode(' ' + documentNames.join(', ')));
-                messageContent.appendChild(sourcesDiv);
-            }
-            
+
             chatMessages.appendChild(messageDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }

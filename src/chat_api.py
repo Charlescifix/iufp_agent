@@ -92,6 +92,15 @@ class ChatAPISecurityError(Exception):
     pass
 
 
+# The system prompt tells the model to open with this exact phrase when CONTEXT has no answer
+NO_ANSWER_PHRASE = "I don't have that information in IUFP's guides."
+
+
+def is_no_answer(response_text: str) -> bool:
+    normalized = response_text.strip().replace("’", "'").lower()
+    return normalized.startswith(NO_ANSWER_PHRASE.lower().rstrip("."))
+
+
 def get_client_ip(request: Request) -> str:
     """Resolve the real client IP behind a reverse proxy.
 
@@ -328,32 +337,27 @@ class ChatService:
 
 ACCURACY RULES (most important):
 - Answer ONLY from the IUFP documents in CONTEXT. Do not use outside knowledge.
-- If CONTEXT does not contain the answer, say you don't have that information in IUFP's guides and suggest visiting www.iufp.org.uk or booking a consultation. Never guess.
+- Every fact, condition and eligibility rule you state must be written in CONTEXT. Do not fill gaps with general knowledge about UK visas, even if you believe it is true.
+- For "can I / am I allowed" questions, only say yes or no if CONTEXT states it directly. A fee that mentions something (e.g. dependants) is not evidence that it is allowed.
+- If CONTEXT does not contain the answer, start your reply with exactly "{NO_ANSWER_PHRASE}" and suggest visiting www.iufp.org.uk or booking a consultation. Never guess.
+- If CONTEXT answers only part of the question, answer that part and say the rest isn't covered in IUFP's guides.
 - Never invent fees, amounts, dates, deadlines or requirements. Use figures exactly as they appear in CONTEXT, with the label CONTEXT gives them.
 - Never calculate, multiply or combine figures to produce a new amount; quote only amounts written in CONTEXT.
 - When giving fees or financial requirements, add that UK visa rules change and the user should confirm current figures on gov.uk.
 - Questions about UK study, student visas, dependants, fees or living in the UK as a student are in scope: if CONTEXT doesn't cover them, say it isn't in IUFP's guides rather than calling them off-topic.
-- For topics unrelated to UK study or student visas, politely say you can only help with those.
+- For topics unrelated to UK study or student visas, politely say in one sentence that you can only help with those.
 - If the message is only a greeting or thanks, reply in one short sentence and offer help. Don't add sign-off lines like "let me know" to other answers.
 
 RESPONSE FORMATTING:
-- Maximum 120 words - be concise but complete
-- Use **bold** for section titles and key terms
-- Use double line breaks between each section for proper spacing
-- Use bullet points (•) with spaces for lists
-- Use numbered steps (1., 2., 3.) for processes
-- Each bullet point or section should have a blank line after it
-
-CONTENT GUIDELINES:
-- Start with brief explanation, then use sections like **Purpose:**, **Duration:**, **Benefits:**
-- Summarise key points only - no unnecessary details
-- Be direct and actionable
-- Maintain helpful, professional tone
+- Keep answers under 150 words. A step-by-step process may run to 250 words so that no step is left out.
+- Open with one or two plain sentences that answer the question directly.
+- Use "- " for bullet lists and "1. ", "2. " for ordered steps. Keep each item to one line; don't nest lists.
+- Use **bold** sparingly for key terms and figures, not whole lines.
+- Separate paragraphs and lists with one blank line. No headings.
+- Be direct and actionable, with a helpful, professional tone.
 
 CONTEXT:
-{context_text}
-
-Format: Brief, well-spaced responses with bold titles and clear section breaks."""
+{context_text}"""
             
             # Generate response
             response = await self.openai_client.chat.completions.create(
@@ -367,7 +371,10 @@ Format: Brief, well-spaced responses with bold titles and clear section breaks."
             )
             
             assistant_response = response.choices[0].message.content.strip()
-            
+            if response.choices[0].finish_reason == "length":
+                self.logger.warning("Response hit max_output_tokens and was cut off",
+                                    max_output_tokens=settings.max_output_tokens)
+
             self.logger.info(
                 "Response generated successfully",
                 query_length=len(query),
@@ -417,8 +424,9 @@ Format: Brief, well-spaced responses with bold titles and clear section breaks."
             response_text = await self.generate_response(request.message, search_results)
             
             # Create source citations
+            # A "not in IUFP's guides" reply used none of the retrieved chunks, so citing them would mislead
             sources = []
-            if request.include_sources:
+            if request.include_sources and not is_no_answer(response_text):
                 for result in search_results:
                     source = SourceCitation(
                         chunk_id=result.chunk_id,

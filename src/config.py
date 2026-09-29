@@ -54,7 +54,8 @@ class Settings(BaseSettings):
     # Minimum cosine similarity for a chunk to be used as context. Measured on the IUFP corpus:
     # in-scope questions scored 0.43-0.71, out-of-scope 0.07-0.35.
     min_relevance_score: float = 0.38
-    max_output_tokens: int = 200
+    # Room for a full step-by-step answer (~250 words plus list markup); 200 cut such answers off mid-list
+    max_output_tokens: int = 500
     embedding_dimension: int = 1536
     response_cache_ttl_seconds: int = 180
     response_cache_max_entries: int = 200
