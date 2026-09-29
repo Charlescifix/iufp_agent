@@ -92,6 +92,19 @@ class ChatAPISecurityError(Exception):
     pass
 
 
+class RetrievalUnavailableError(Exception):
+    """Raised when the knowledge base could not be searched at all.
+
+    Kept separate from "nothing relevant was found": answering with no context
+    tells the user IUFP has no information on something its guides may cover.
+    """
+    pass
+
+
+# Previous turns of a session replayed to the model, so follow-ups have context
+HISTORY_TURN_LIMIT = 4
+
+
 # The system prompt tells the model to open with this exact phrase when CONTEXT has no answer
 NO_ANSWER_PHRASE = "I don't have that information in IUFP's guides."
 
@@ -311,15 +324,43 @@ class ChatService:
             max_entries=settings.response_cache_max_entries
         )
     
-    def _create_cache_key(self, query: str, context_chunks: List[RetrievalResult]) -> str:
+    def _create_cache_key(self, query: str, context_chunks: List[RetrievalResult],
+                          history: Optional[List[Dict[str, str]]] = None) -> str:
         normalized_query = " ".join(query.lower().split())
         context_signature = "|".join([f"{c.chunk_id}:{round(c.hybrid_score, 3)}" for c in context_chunks])
-        return hashlib.sha256(f"{normalized_query}::{context_signature}".encode("utf-8")).hexdigest()
+        # The conversation is part of the input, so two sessions asking the same
+        # question after different turns must not share a cached answer
+        history_signature = "|".join(f"{m['role']}:{m['content']}" for m in (history or []))
+        return hashlib.sha256(
+            f"{normalized_query}::{context_signature}::{history_signature}".encode("utf-8")
+        ).hexdigest()
 
-    async def generate_response(self, query: str, context_chunks: List[RetrievalResult]) -> str:
+    async def _load_history(self, session_id: str) -> List[Dict[str, str]]:
+        """Recent turns of this session, as OpenAI messages.
+
+        History is a nicety, not a requirement: if it can't be read, the current
+        question is still answerable on its own.
+        """
+        if not session_id:
+            return []
+
+        try:
+            past = await self.vector_store.get_chat_history(session_id, HISTORY_TURN_LIMIT)
+        except Exception as e:
+            self.logger.warning("Could not load chat history, answering without it", error=str(e))
+            return []
+
+        messages: List[Dict[str, str]] = []
+        for turn in past:
+            messages.append({"role": "user", "content": turn.user_message})
+            messages.append({"role": "assistant", "content": turn.bot_response})
+        return messages
+
+    async def generate_response(self, query: str, context_chunks: List[RetrievalResult],
+                                history: Optional[List[Dict[str, str]]] = None) -> str:
         """Generate response using OpenAI with context"""
         log_function_call(self.logger, "generate_response", query_length=len(query), context_count=len(context_chunks))
-        cache_key = self._create_cache_key(query, context_chunks)
+        cache_key = self._create_cache_key(query, context_chunks, history)
         cached_response = self.response_cache.get(cache_key)
         if cached_response:
             self.logger.info("Response cache hit", query_length=len(query))
@@ -338,6 +379,7 @@ class ChatService:
 ACCURACY RULES (most important):
 - Answer ONLY from the IUFP documents in CONTEXT. Do not use outside knowledge.
 - Every fact, condition and eligibility rule you state must be written in CONTEXT. Do not fill gaps with general knowledge about UK visas, even if you believe it is true.
+- Earlier turns are shown only so you can tell what the user is referring to. Never treat them as a source of facts; every fact still has to be in CONTEXT.
 - For "can I / am I allowed" questions, only say yes or no if CONTEXT states it directly. A fee that mentions something (e.g. dependants) is not evidence that it is allowed.
 - If CONTEXT does not contain the answer, start your reply with exactly "{NO_ANSWER_PHRASE}" and suggest visiting www.iufp.org.uk or booking a consultation. Never guess.
 - If CONTEXT answers only part of the question, answer that part and say the rest isn't covered in IUFP's guides.
@@ -364,6 +406,7 @@ CONTEXT:
                 model=settings.chat_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
+                    *(history or []),
                     {"role": "user", "content": query}
                 ],
                 max_tokens=settings.max_output_tokens,
@@ -417,11 +460,16 @@ CONTEXT:
                 search_results = [r for r in search_results if r.vector_score >= settings.min_relevance_score]
                 self.logger.info(f"Retrieved {len(search_results)} relevant search results")
             except Exception as search_error:
-                self.logger.warning(f"Search failed, using fallback: {str(search_error)}")
-                # Continue with empty search results for fallback response
+                # Falling through with no context would tell the user the guides
+                # don't cover a question they may well cover, so report the outage
+                self.logger.error(f"Search failed, cannot ground an answer: {str(search_error)}")
+                raise RetrievalUnavailableError(str(search_error)) from search_error
             
+            # Earlier turns, so a follow-up like "what about dependants?" makes sense
+            history = await self._load_history(session_id)
+
             # Generate response (works with empty search results too)
-            response_text = await self.generate_response(request.message, search_results)
+            response_text = await self.generate_response(request.message, search_results, history)
             
             # Create source citations
             # A "not in IUFP's guides" reply used none of the retrieved chunks, so citing them would mislead
@@ -449,7 +497,13 @@ CONTEXT:
                 processing_time=processing_time
             )
             
-            await self.vector_store.store_chat_message(chat_message, client_ip)
+            # The reply is already generated and the user is waiting on it; the
+            # audit row is worth less than the answer
+            try:
+                await self.vector_store.store_chat_message(chat_message, client_ip)
+            except Exception as store_error:
+                self.logger.error("Could not store chat message",
+                                  message_id=message_id, error=str(store_error))
             
             # Create response
             response = ChatResponse(
@@ -519,6 +573,14 @@ async def chat_endpoint(
         
         return response
         
+    except RetrievalUnavailableError as e:
+        logger.error("Chat request failed: knowledge base unreachable",
+                     client_ip=client_ip, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="I couldn't reach IUFP's guides just now. Please try again in a moment."
+        )
+
     except Exception as e:
         # Log detailed error for debugging
         import traceback
@@ -639,6 +701,9 @@ async def get_chat_history(
         
         return {"session_id": session_id, "messages": history}
         
+    except HTTPException:
+        # An invalid session ID is the caller's error; don't relabel it a 500
+        raise
     except Exception as e:
         logger.error("Chat history request failed", session_id=session_id, error=str(e))
         raise HTTPException(
