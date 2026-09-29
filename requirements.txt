@@ -1,41 +1,11 @@
-# Core FastAPI and web framework
-fastapi==0.104.1
-uvicorn==0.24.0
-python-multipart==0.0.6
+# Full local environment: API runtime + ingestion + dev tools.
+-r requirements-prod.txt
 
-# Security and authentication
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-python-dotenv==1.0.0
-slowapi==0.1.9
+# Ingestion only (python -m src.ingest); kept out of the production image
+boto3==1.43.103
+pdfplumber==0.11.10
 
-# AWS and cloud services
-boto3==1.34.0
-botocore==1.34.0
-
-# Database and vector storage
-psycopg2-binary>=2.9.10
-sqlalchemy>=2.0.41
-pgvector>=0.4.1
-
-# PDF processing
-pdfplumber>=0.11.7
-
-# ML and embeddings
-openai>=1.97.1
-numpy>=2.3.2
-
-# Data processing
-pydantic>=2.11.7
-pydantic-settings>=2.0.0
-
-# HTTP
-requests>=2.32.4
-httpx>=0.28.1
-
-# Logging
-structlog>=25.4.0
-
-# Development tools
-black>=25.1.0
-flake8>=7.3.0
+# Dev tools
+pip-audit
+black
+flake8

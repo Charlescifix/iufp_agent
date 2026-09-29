@@ -1,33 +1,23 @@
-# Core FastAPI and web framework
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-python-multipart==0.0.6
+# Runtime dependencies of the API (installed in the Docker image).
+# Ingestion and dev tools live in requirements.txt.
 
-# Security and authentication
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-python-dotenv==1.0.0
-slowapi==0.1.9
+# Web framework
+fastapi==0.141.1
+uvicorn==0.54.0
+slowapi==0.1.10
+
+# Configuration
+pydantic==2.13.5
+pydantic-settings==2.15.0
+python-dotenv==1.2.3
 
 # Database and vector storage
-psycopg2-binary==2.9.10
-sqlalchemy==2.0.41
-pgvector==0.4.1
+psycopg[binary]==3.3.6
+sqlalchemy==2.1.1
+pgvector==0.5.0
 
-# ML and embeddings (lightweight)
-openai==1.97.1
-numpy==2.3.2
-
-# Data processing (essential only)
-pydantic==2.11.7
-pydantic-settings==2.0.0
-
-# Text processing and search
-pdfplumber==0.11.7
-
-# HTTP requests
-requests==2.32.4
-httpx==0.28.1
+# OpenAI (embeddings + chat)
+openai==3.19.2
 
 # Logging
-structlog==25.4.0
+structlog==26.1.0

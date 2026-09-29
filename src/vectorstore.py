@@ -1,28 +1,14 @@
 import asyncio
 import functools
 import json
-import time
-from typing import List, Dict, Optional, Tuple, Any, Union
+from typing import List, Dict, Optional, Tuple, Any
 from dataclasses import dataclass, asdict
 from datetime import datetime
-import hashlib
-import uuid
 
-import psycopg2
-from psycopg2.extras import RealDictCursor, execute_values
-from sqlalchemy import create_engine, text, MetaData, Table, Column, String, DateTime, Integer, Float, Text, Index
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
-try:
-    import pgvector
-    from pgvector.sqlalchemy import Vector
-    PGVECTOR_AVAILABLE = True
-except ImportError:
-    PGVECTOR_AVAILABLE = False
-    # Fallback: use PostgreSQL arrays for vectors
-    from sqlalchemy import ARRAY, Float
-import numpy as np
+from sqlalchemy import create_engine, text, Column, String, DateTime, Integer, Float, Text, Index
+from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.dialects.postgresql import ARRAY
+from pgvector.sqlalchemy import Vector
 
 from .config import settings
 from .logger import get_logger, log_function_call, log_function_result, log_security_event
@@ -61,7 +47,7 @@ class VectorStoreSecurityError(Exception):
 def run_in_thread(fn):
     """Expose a blocking DB method as awaitable, running it in a worker thread.
 
-    Keeps the event loop free while psycopg2 waits on the network, so a single
+    Keeps the event loop free while psycopg waits on the network, so a single
     uvicorn worker can serve concurrent requests without an async DB driver.
     """
     @functools.wraps(fn)

@@ -1,7 +1,5 @@
-import os
 from typing import List
-from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -37,9 +35,6 @@ class Settings(BaseSettings):
     query_embedding_cache_size: int = 256
     
     # Security Configuration
-    secret_key: str = ""
-    jwt_algorithm: str = "HS256"
-    jwt_expiration_hours: int = 24
     api_key_header: str = "X-API-Key"
     admin_api_key: str = ""
     
@@ -81,8 +76,7 @@ class Settings(BaseSettings):
             return self.database_url
         return ""
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    # Unknown keys (e.g. a temporary variable in .env) are ignored rather than stopping startup
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 
 settings = Settings()

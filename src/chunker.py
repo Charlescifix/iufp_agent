@@ -2,9 +2,7 @@ import re
 import json
 import os
 from typing import List, Dict, Optional, Tuple
-from pathlib import Path
 from dataclasses import dataclass, asdict
-import pdfplumber
 from datetime import datetime
 import hashlib
 
@@ -100,6 +98,9 @@ class DocumentChunker:
         """Fallback extraction using pdfplumber"""
         log_function_call(self.logger, "_extract_with_pdfplumber", file_path=file_path[:50])
         
+        # Imported lazily: only ingestion parses PDFs, so the API image doesn't ship pdfplumber
+        import pdfplumber
+
         try:
             with pdfplumber.open(file_path) as pdf:
                 text_parts = []
