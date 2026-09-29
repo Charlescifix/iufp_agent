@@ -32,6 +32,9 @@ class RetrievalConfig:
     bm25_weight: float = 0.3
     max_results: int = 10
     min_score_threshold: float = 0.1
+    # Absolute cosine similarity a chunk needs to count as being about the question,
+    # judged before the max_results cut so a weak chunk can't take a good one's slot
+    min_vector_score: float = settings.min_relevance_score
     enable_reranking: bool = True
 
 
@@ -109,13 +112,11 @@ class HybridRetriever:
         
         log_function_result(self.logger, "_validate_query")
     
-    async def _vector_search(self, query: str, limit: int) -> List[SearchResult]:
+    async def _vector_search(self, query_embedding: List[float], limit: int) -> List[SearchResult]:
         """Perform vector similarity search"""
-        log_function_call(self.logger, "_vector_search", query_length=len(query), limit=limit)
-        
+        log_function_call(self.logger, "_vector_search", limit=limit)
+
         try:
-            query_embedding = await self._get_query_embedding(query)
-            
             # Perform similarity search
             results = await self.vector_store.similarity_search(
                 query_embedding=query_embedding,
@@ -144,6 +145,22 @@ class HybridRetriever:
             self._embedding_cache.popitem(last=False)
         return embedding_result.embedding
 
+    async def _score_keyword_only_hits(self, query_embedding: List[float],
+                                       chunk_ids: List[str]) -> Dict[str, float]:
+        """Real similarity for chunks that only keyword search returned.
+
+        Losing these scores costs recall, not correctness: they fall back to 0.0
+        and are filtered out exactly as they were before.
+        """
+        if not chunk_ids:
+            return {}
+
+        try:
+            return await self.vector_store.similarity_scores_for_chunks(query_embedding, chunk_ids)
+        except Exception as e:
+            self.logger.warning("Could not score keyword-only chunks", error=str(e))
+            return {}
+
     async def _fts_search(self, query: str, limit: int) -> List[Dict]:
         """Perform full-text search via PostgreSQL (no in-memory index)."""
         log_function_call(self.logger, "_fts_search", query_length=len(query), limit=limit)
@@ -170,8 +187,11 @@ class HybridRetriever:
         
         return [(score - min_score) / (max_score - min_score) for score in scores]
     
-    def _combine_results(self, vector_results: List[SearchResult], bm25_results: List[Dict], config: RetrievalConfig) -> List[RetrievalResult]:
+    def _combine_results(self, vector_results: List[SearchResult], bm25_results: List[Dict],
+                         config: RetrievalConfig,
+                         keyword_only_scores: Optional[Dict[str, float]] = None) -> List[RetrievalResult]:
         """Combine and rank vector and BM25 results"""
+        keyword_only_scores = keyword_only_scores or {}
         log_function_call(self.logger, "_combine_results", 
                          vector_count=len(vector_results), bm25_count=len(bm25_results))
         
@@ -188,8 +208,10 @@ class HybridRetriever:
             vector_result = vector_map.get(chunk_id)
             bm25_result = bm25_map.get(chunk_id)
             
-            # Get scores (default to 0 if not found)
-            vector_score = vector_result.score if vector_result else 0.0
+            # Get scores. A chunk that only keyword search returned still has a real
+            # similarity to the query; 0.0 is the fallback when it couldn't be read
+            vector_score = (vector_result.score if vector_result
+                            else keyword_only_scores.get(chunk_id, 0.0))
             bm25_score = bm25_result['bm25_score'] if bm25_result else 0.0
             
             # Get document info (prefer vector result as it has more metadata)
@@ -214,6 +236,14 @@ class HybridRetriever:
                 'metadata': metadata
             })
         
+        # Drop chunks that aren't about the question before anything is ranked or
+        # truncated, so every max_results slot goes to usable context. Judged on
+        # absolute similarity, not the per-query normalised score.
+        candidate_count = len(combined_results)
+        combined_results = [r for r in combined_results
+                            if r['vector_score'] >= config.min_vector_score]
+        below_relevance = candidate_count - len(combined_results)
+
         # Normalize scores separately
         vector_scores = [r['vector_score'] for r in combined_results]
         bm25_scores = [r['bm25_score'] for r in combined_results]
@@ -256,6 +286,7 @@ class HybridRetriever:
         self.logger.info(
             "Results combined successfully",
             total_unique_chunks=len(all_chunk_ids),
+            below_relevance=below_relevance,
             above_threshold=len(final_results),
             final_count=len(final_results)
         )
@@ -279,13 +310,25 @@ class HybridRetriever:
             # Perform both searches concurrently
             search_limit = min(config.max_results * 2, 50)  # Get more results for better ranking
             
-            vector_task = asyncio.create_task(self._vector_search(query, search_limit))
+            # Embedded once here: the vector search needs it, and so does scoring
+            # the chunks that only keyword search returns
+            query_embedding = await self._get_query_embedding(query)
+
+            vector_task = asyncio.create_task(self._vector_search(query_embedding, search_limit))
             fts_task = asyncio.create_task(self._fts_search(query, search_limit))
 
             vector_results, bm25_results = await asyncio.gather(vector_task, fts_task)
-            
+
+            # Keyword search surfaces chunks ranked below the vector top-N — exact
+            # terms, acronyms, figures. Scoring them is what lets one survive the gate.
+            vector_ids = {result.chunk_id for result in vector_results}
+            keyword_only_ids = [result['chunk_id'] for result in bm25_results
+                                if result['chunk_id'] not in vector_ids]
+            keyword_only_scores = await self._score_keyword_only_hits(query_embedding, keyword_only_ids)
+
             # Combine and rank results
-            final_results = self._combine_results(vector_results, bm25_results, config)
+            final_results = self._combine_results(vector_results, bm25_results, config,
+                                                  keyword_only_scores)
             
             # Re-ranking (if enabled)
             if config.enable_reranking and len(final_results) > 1:
@@ -298,6 +341,7 @@ class HybridRetriever:
                 query_length=len(query),
                 vector_results=len(vector_results),
                 bm25_results=len(bm25_results),
+                keyword_only_scored=len(keyword_only_scores),
                 final_results=len(final_results),
                 processing_time=processing_time
             )
