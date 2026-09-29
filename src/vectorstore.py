@@ -557,6 +557,49 @@ class PostgreSQLVectorStore:
             raise
     
     @run_in_thread
+    def similarity_scores_for_chunks(self, query_embedding: List[float],
+                                     chunk_ids: List[str]) -> Dict[str, float]:
+        """Cosine similarity of specific chunks to the query.
+
+        Keyword search finds chunks the vector top-N missed. Without their real
+        similarity they can only be scored 0, which drops every one of them at
+        the relevance gate no matter how well they match.
+        """
+        log_function_call(self.logger, "similarity_scores_for_chunks", chunk_count=len(chunk_ids))
+
+        if not chunk_ids:
+            return {}
+
+        if not query_embedding or len(query_embedding) != settings.embedding_dimension:
+            error = VectorStoreSecurityError(
+                f"Invalid query embedding dimension: {len(query_embedding)}"
+            )
+            log_function_result(self.logger, "similarity_scores_for_chunks", error=error)
+            raise error
+
+        if len(chunk_ids) > 100:
+            error = VectorStoreSecurityError(f"Too many chunk IDs: {len(chunk_ids)} (max: 100)")
+            log_function_result(self.logger, "similarity_scores_for_chunks", error=error)
+            raise error
+
+        try:
+            with self.SessionLocal() as session:
+                rows = session.query(
+                    DocumentChunkEntity.chunk_id,
+                    DocumentChunkEntity.embedding.cosine_distance(query_embedding).label('distance')
+                ).filter(DocumentChunkEntity.chunk_id.in_(chunk_ids)).all()
+
+                scores = {row.chunk_id: max(0.0, 1.0 - row.distance) for row in rows}
+
+            log_function_result(self.logger, "similarity_scores_for_chunks",
+                                result=f"Scored {len(scores)} chunks")
+            return scores
+
+        except Exception as e:
+            log_function_result(self.logger, "similarity_scores_for_chunks", error=e)
+            raise
+
+    @run_in_thread
     def fts_search(self, query: str, limit: int = 10) -> List[Dict]:
         """Perform full-text search using PostgreSQL tsvector/ts_rank (no in-memory index)."""
         log_function_call(self.logger, "fts_search", query_length=len(query), limit=limit)

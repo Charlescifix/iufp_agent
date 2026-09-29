@@ -454,10 +454,9 @@ CONTEXT:
             
             search_results = []
             try:
+                # The retriever applies min_relevance_score itself, before it cuts to
+                # max_results, so a weak chunk can't take a usable one's slot
                 search_results = await self.retriever.search(request.message, retrieval_config)
-                # Keep only chunks genuinely about the question (absolute similarity, not the per-query
-                # normalised hybrid score), so off-topic questions get no misleading context
-                search_results = [r for r in search_results if r.vector_score >= settings.min_relevance_score]
                 self.logger.info(f"Retrieved {len(search_results)} relevant search results")
             except Exception as search_error:
                 # Falling through with no context would tell the user the guides
