@@ -7,11 +7,8 @@ Usage:
 2. As widget: Add ?widget=true to URL or embed in iframe
 3. Programmatic: Call enableWidgetMode() from parent window
 
-Widget dimensions:
-- Mobile: 400px height
-- Tablet: 450px height  
-- Desktop: 520px height
-- Max width: 420px on large screens
+In widget mode the chat fills the iframe and hides its own header, so the
+embedding page sizes the iframe and supplies the title bar / close button.
 
 Responsive breakpoints: 480px, 768px, 1200px
 -->
@@ -47,11 +44,10 @@ Responsive breakpoints: 480px, 768px, 1200px
 
         .widget-mode .chat-container {
             max-width: 100%;
-            height: 500px;
-            min-height: 400px;
+            height: 100vh;
             margin: 0;
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+            border-radius: 0;
+            box-shadow: none;
         }
 
         .chat-container {
@@ -79,9 +75,9 @@ Responsive breakpoints: 480px, 768px, 1200px
             min-height: 70px;
         }
 
+        /* The embedding page's panel has its own title bar and Close button */
         .widget-mode .header {
-            padding: 12px 16px;
-            min-height: 60px;
+            display: none;
         }
 
         .logo {
@@ -454,11 +450,6 @@ Responsive breakpoints: 480px, 768px, 1200px
                 max-width: 100%;
             }
             
-            .widget-mode .chat-container {
-                height: 450px;
-                border-radius: 8px;
-            }
-            
             .header {
                 padding: 12px 15px;
                 min-height: 55px;
@@ -536,11 +527,6 @@ Responsive breakpoints: 480px, 768px, 1200px
                 height: calc(100vh - 20px);
             }
             
-            .widget-mode .chat-container {
-                height: 480px;
-                margin: 0;
-            }
-            
             .header {
                 padding: 14px 18px;
             }
@@ -562,23 +548,10 @@ Responsive breakpoints: 480px, 768px, 1200px
             }
         }
         
-        /* Desktop - Large screens (769px and up) */
-        @media (min-width: 769px) {
-            .widget-mode .chat-container {
-                max-width: 400px;
-                height: 520px;
-            }
-        }
-        
         /* Extra large screens */
         @media (min-width: 1200px) {
             .chat-container {
                 max-width: 900px;
-            }
-            
-            .widget-mode .chat-container {
-                max-width: 420px;
-                height: 550px;
             }
         }
         
@@ -837,13 +810,6 @@ Responsive breakpoints: 480px, 768px, 1200px
             document.body.classList.add('widget-mode');
             const container = document.getElementById('chatContainer');
             container.classList.add('widget-mode');
-            
-            // Adjust height for smaller screens
-            if (window.innerWidth <= 480) {
-                container.style.height = '400px';
-            } else if (window.innerWidth <= 768) {
-                container.style.height = '450px';
-            }
         }
         
         function disableWidgetMode() {
@@ -872,20 +838,6 @@ Responsive breakpoints: 480px, 768px, 1200px
             }
         }
         
-        // Enhanced responsive handling
-        function handleResize() {
-            const container = document.getElementById('chatContainer');
-            if (document.body.classList.contains('widget-mode')) {
-                if (window.innerWidth <= 480) {
-                    container.style.height = '400px';
-                } else if (window.innerWidth <= 768) {
-                    container.style.height = '450px';
-                } else {
-                    container.style.height = '520px';
-                }
-            }
-        }
-        
         // Focus on input when page loads
         window.onload = function() {
             initializeWidget();
@@ -894,9 +846,6 @@ Responsive breakpoints: 480px, 768px, 1200px
             // Add input auto-resize
             const messageInput = document.getElementById('messageInput');
             messageInput.addEventListener('input', autoResizeInput);
-            
-            // Add resize listener
-            window.addEventListener('resize', handleResize);
         };
     </script>
 </body>
