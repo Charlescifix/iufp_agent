@@ -6,7 +6,7 @@ from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, asdict
 import numpy as np
 import openai
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 import structlog
 
 from .config import settings
@@ -91,11 +91,15 @@ class EmbeddingService:
         log_function_call(self.logger, "_setup_openai_client")
         
         try:
-            self.client = OpenAI(
+            client_options = dict(
                 api_key=settings.openai_api_key,
-                timeout=30.0,  # 30 second timeout
-                max_retries=3
+                timeout=settings.openai_timeout_seconds,
+                max_retries=settings.openai_max_retries
             )
+            # Sync client is only used for the one-off startup check;
+            # all request-time calls go through the async client.
+            self.client = OpenAI(**client_options)
+            self.async_client = AsyncOpenAI(**client_options)
             
             # Test API connection
             self._test_api_connection()
@@ -128,10 +132,11 @@ class EmbeddingService:
             
             actual_dimension = len(response.data[0].embedding)
             if actual_dimension != settings.embedding_dimension:
-                self.logger.warning(
-                    "Embedding dimension mismatch",
-                    expected=settings.embedding_dimension,
-                    actual=actual_dimension
+                # Fail fast: a mismatch makes every search fail, which would otherwise
+                # silently degrade chat to answers with no retrieved context.
+                raise EmbeddingSecurityError(
+                    f"Embedding dimension mismatch: {settings.embedding_model} returns "
+                    f"{actual_dimension} dims but EMBEDDING_DIMENSION is {settings.embedding_dimension}"
                 )
             
             self.logger.debug("API connection test successful")
@@ -147,6 +152,11 @@ class EmbeddingService:
             log_function_result(self.logger, "_test_api_connection", error=error)
             raise error
     
+    async def close(self) -> None:
+        """Close the underlying HTTP clients."""
+        self.client.close()
+        await self.async_client.close()
+
     def _validate_text_input(self, text: str) -> None:
         """Validate text input for security and size limits"""
         log_function_call(self.logger, "_validate_text_input", text_length=len(text))
@@ -252,7 +262,7 @@ class EmbeddingService:
             self._check_rate_limits(estimated_tokens)
             
             # Create embedding request
-            response = self.client.embeddings.create(
+            response = await self.async_client.embeddings.create(
                 input=text,
                 model=settings.embedding_model
             )
@@ -350,7 +360,7 @@ class EmbeddingService:
             self._check_rate_limits(total_estimated_tokens)
             
             # Create batch embedding request
-            response = self.client.embeddings.create(
+            response = await self.async_client.embeddings.create(
                 input=texts,
                 model=settings.embedding_model
             )

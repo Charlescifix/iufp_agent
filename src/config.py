@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
     chat_model: str = "gpt-4o-mini"
+    openai_timeout_seconds: float = 20.0
+    openai_max_retries: int = 2
+    query_embedding_cache_size: int = 256
     
     # Security Configuration
     secret_key: str = ""
@@ -43,7 +46,9 @@ class Settings(BaseSettings):
     # Rate Limiting
     rate_limit_requests: int = 100
     rate_limit_period: int = 3600
-    
+    # Number of reverse proxies in front of the app (Railway edge = 1); 0 = use socket IP
+    trusted_proxy_hops: int = 1
+
     # Application Configuration
     debug: bool = False
     log_level: str = "INFO"

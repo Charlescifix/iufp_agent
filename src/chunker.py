@@ -212,24 +212,27 @@ class DocumentChunker:
             # Try to break at sentence boundaries
             if end < len(text):
                 # Look for sentence endings in the last 200 characters
-                last_part = chunk_text[-200:]
+                window_start = max(0, len(chunk_text) - 200)
+                last_part = chunk_text[window_start:]
                 sentence_ends = ['.', '!', '?', '\n\n']
-                
+
                 best_break = -1
                 for sent_end in sentence_ends:
                     pos = last_part.rfind(sent_end)
                     if pos > best_break:
                         best_break = pos
-                
+
                 if best_break > 100:  # Only break if we found a good spot
-                    chunk_text = chunk_text[:-(200 - best_break - 1)]
-            
-            chunks.append(chunk_text.strip())
-            
-            # Move start position with overlap
+                    # Keep everything up to and including the sentence terminator
+                    chunk_text = chunk_text[:window_start + best_break + 1]
+
+            if chunk_text.strip():
+                chunks.append(chunk_text.strip())
+
+            # Move start position with overlap, from where this chunk actually ended
             if end >= len(text):
                 break
-            start = end - overlap
+            start = max(start + 1, start + len(chunk_text) - overlap)
         
         self.logger.debug("Text split into chunks", total_chunks=len(chunks), avg_chunk_size=len(text) // len(chunks) if chunks else 0)
         log_function_result(self.logger, "_split_text_into_chunks", result=f"{len(chunks)} chunks")

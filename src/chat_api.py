@@ -20,8 +20,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-import openai
-from openai import OpenAI
+from openai import AsyncOpenAI
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 import structlog
@@ -94,13 +93,29 @@ class ChatAPISecurityError(Exception):
     pass
 
 
+def get_client_ip(request: Request) -> str:
+    """Resolve the real client IP behind a reverse proxy.
+
+    Uses the X-Forwarded-For entry appended by our own proxy (counting
+    trusted_proxy_hops from the right). The leftmost entries are client-supplied
+    and can be spoofed, so they are never trusted.
+    """
+    hops = settings.trusted_proxy_hops
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if hops > 0 and forwarded_for:
+        hosts = [h.strip() for h in forwarded_for.split(",") if h.strip()]
+        if len(hosts) >= hops:
+            return hosts[-hops]
+    return get_remote_address(request)
+
+
 class SecurityManager:
     def __init__(self):
         self.logger = get_logger(__name__)
         self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         
         # Rate limiting
-        self.limiter = Limiter(key_func=get_remote_address)
+        self.limiter = Limiter(key_func=get_client_ip)
         
         # Session management
         self.active_sessions = {}
@@ -144,7 +159,7 @@ class SecurityManager:
             event_type,
             {
                 **details,
-                "client_ip": get_remote_address(request),
+                "client_ip": get_client_ip(request),
                 "user_agent": request.headers.get("user-agent", ""),
                 "timestamp": datetime.utcnow().isoformat()
             },
@@ -204,13 +219,17 @@ async def lifespan(app: FastAPI):
         vector_store = PostgreSQLVectorStore()
         await vector_store.get_document_stats()
 
-        # Initialise retriever
-        retriever = HybridRetriever()
+        # Initialise retriever (shares the vector store's engine and connection pool)
+        retriever = HybridRetriever(vector_store=vector_store)
         
         # Store in app state
         app.state.vector_store = vector_store
         app.state.retriever = retriever
-        app.state.openai_client = OpenAI(api_key=settings.openai_api_key)
+        app.state.openai_client = AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            timeout=settings.openai_timeout_seconds,
+            max_retries=settings.openai_max_retries
+        )
         app.state.health_state = HealthcheckState(settings.healthcheck_cache_ttl_seconds)
         app.state.chat_service = ChatService(vector_store, retriever, app.state.openai_client)
         
@@ -224,6 +243,9 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("IUFP RAG Chat API shutting down...")
+    await app.state.openai_client.close()
+    await app.state.retriever.embedding_service.close()
+    app.state.vector_store.close()
 
 
 # Create FastAPI app
@@ -310,7 +332,7 @@ class HealthcheckState:
 
 # Chat API Implementation
 class ChatService:
-    def __init__(self, vector_store: PostgreSQLVectorStore, retriever: HybridRetriever, openai_client: OpenAI):
+    def __init__(self, vector_store: PostgreSQLVectorStore, retriever: HybridRetriever, openai_client: AsyncOpenAI):
         self.vector_store = vector_store
         self.retriever = retriever
         self.openai_client = openai_client
@@ -366,7 +388,7 @@ CONTEXT:
 Format: Brief, well-spaced responses with bold titles and clear section breaks."""
             
             # Generate response
-            response = self.openai_client.chat.completions.create(
+            response = await self.openai_client.chat.completions.create(
                 model=settings.chat_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -477,8 +499,8 @@ Format: Brief, well-spaced responses with bold titles and clear section breaks."
             raise
 
 
-# Static file serving for images and assets
-app.mount("/static", StaticFiles(directory="."), name="static")
+# Static file serving for images and assets (only the static/ folder, never the project root)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Static file serving
 @app.get("/")
@@ -499,7 +521,7 @@ async def chat_endpoint(
     request: Request
 ):
     """Main chat endpoint with security and rate limiting"""
-    client_ip = get_remote_address(request)
+    client_ip = get_client_ip(request)
     
     try:
         # Process message
@@ -547,22 +569,16 @@ async def health_check():
         cached = app.state.health_state.get_cached()
         if cached:
             return cached
-        # Check database
+        # Check database (the retriever shares this store, so one query covers both)
         db_status = "healthy"
         try:
             await app.state.vector_store.get_document_stats()
         except Exception:
             db_status = "unhealthy"
-        
-        # Check retriever
-        retriever_status = "healthy"
-        try:
-            await app.state.retriever.get_retrieval_stats()
-        except Exception:
-            retriever_status = "unhealthy"
-        
+        retriever_status = db_status
+
         # Overall status
-        overall_status = "healthy" if db_status == "healthy" and retriever_status == "healthy" else "degraded"
+        overall_status = "healthy" if db_status == "healthy" else "degraded"
         
         response = HealthResponse(
             status=overall_status,
@@ -647,7 +663,7 @@ async def get_chat_history(
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """Custom HTTP exception handler with logging"""
-    client_ip = get_remote_address(request)
+    client_ip = get_client_ip(request)
     
     if exc.status_code >= 400:
         security_manager.log_security_event(
@@ -665,7 +681,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     """General exception handler"""
-    client_ip = get_remote_address(request)
+    client_ip = get_client_ip(request)
     
     logger.error("Unhandled exception", client_ip=client_ip, error=str(exc))
     
