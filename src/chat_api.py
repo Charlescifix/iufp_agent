@@ -564,15 +564,21 @@ async def chat_endpoint(
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint. Returns 503 when the database is unreachable, so Railway
+    won't promote a deploy that can't serve chats."""
+    def as_http(health: HealthResponse):
+        if health.status == "healthy":
+            return health
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=health.model_dump())
+
     try:
         cached = app.state.health_state.get_cached()
         if cached:
-            return cached
+            return as_http(cached)
         # Check database (the retriever shares this store, so one query covers both)
         db_status = "healthy"
         try:
-            await app.state.vector_store.get_document_stats()
+            await app.state.vector_store.ping()
         except Exception:
             db_status = "unhealthy"
         retriever_status = db_status
@@ -590,8 +596,8 @@ async def health_check():
             }
         )
         app.state.health_state.set(response)
-        return response
-        
+        return as_http(response)
+
     except Exception as e:
         logger.error("Health check failed", error=str(e))
         raise HTTPException(

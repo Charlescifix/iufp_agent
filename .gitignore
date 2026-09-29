@@ -152,14 +152,9 @@ local/
 scratch/
 experiments/
 
-# Test files (temporary development files)
-test_*.py
-check_*.py
-
-# Markdown files
-*.md
-
 # Analysis reports and chat logs (may contain sensitive data)
+*_Analysis_Report.md
+rag_training_report.md
 chat_logs_*.json
 
 # AWS credentials in env
