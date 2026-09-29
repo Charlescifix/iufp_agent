@@ -480,16 +480,20 @@ CONTEXT:
 # Static file serving for images and assets (only the static/ folder, never the project root)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Pages are re-fetched on every load; without this, browsers can keep showing an old chat UI
+# inside the iufp.org.uk iframe after a deploy
+NO_CACHE_HEADERS = {"Cache-Control": "no-cache"}
+
 # Static file serving
 @app.get("/")
 async def serve_index_page():
     """Serve the index landing page"""
-    return FileResponse("index.html")
+    return FileResponse("index.html", headers=NO_CACHE_HEADERS)
 
 @app.get("/chat")
 async def serve_chat_interface():
     """Serve the chat interface"""
-    return FileResponse("iufp_chat.html")
+    return FileResponse("iufp_chat.html", headers=NO_CACHE_HEADERS)
 
 # API Endpoints
 @app.post("/chat", response_model=ChatResponse)
