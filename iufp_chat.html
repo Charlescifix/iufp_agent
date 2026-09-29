@@ -616,6 +616,17 @@ Responsive breakpoints: 480px, 768px, 1200px
         const API_BASE_URL = window.location.hostname === 'localhost' ? 
             'http://localhost:8000' : 
             window.location.origin;
+        // One session per browser, so the API can keep a conversation together
+        const SESSION_KEY = 'iufp_chat_session';
+        let sessionId = null;
+        try {
+            sessionId = localStorage.getItem(SESSION_KEY);
+        } catch (e) {
+            sessionId = null;  // private mode or blocked storage: chat still works
+        }
+
+        // A second in-flight request leaves a typing indicator stuck forever
+        let isSending = false;
         
         function handleKeyPress(event) {
             if (event.key === 'Enter' && !event.shiftKey) {
@@ -638,7 +649,8 @@ Responsive breakpoints: 480px, 768px, 1200px
             const chatMessages = document.getElementById('chatMessages');
             
             const message = messageInput.value.trim();
-            if (!message) return;
+            if (!message || isSending) return;
+            isSending = true;
 
             // Clear welcome message if it exists
             const welcomeMessage = document.querySelector('.welcome-message');
@@ -649,9 +661,10 @@ Responsive breakpoints: 480px, 768px, 1200px
             // Add user message
             addMessage(message, 'user');
             
-            // Clear input and disable button
+            // Clear input and disable both: Enter bypasses a disabled button
             messageInput.value = '';
             sendButton.disabled = true;
+            messageInput.disabled = true;
             
             // Show typing indicator
             showTypingIndicator();
@@ -662,17 +675,37 @@ Responsive breakpoints: 480px, 768px, 1200px
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        message: message,
-                        include_sources: false
-                    })
+                    body: JSON.stringify(
+                        sessionId
+                            ? { message: message, session_id: sessionId, include_sources: false }
+                            : { message: message, include_sources: false }
+                    )
                 });
 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const httpError = new Error(`HTTP error! status: ${response.status}`);
+                    try {
+                        const errorBody = await response.json();
+                        // The API phrases 503s and 429s for users; prefer its wording
+                        if (typeof errorBody.error === 'string') {
+                            httpError.userMessage = errorBody.error;
+                        }
+                    } catch (e) {
+                        /* non-JSON error body: fall back to the generic message */
+                    }
+                    throw httpError;
                 }
 
                 const data = await response.json();
+                // Continue this session on the next question
+                if (data.session_id && data.session_id !== sessionId) {
+                    sessionId = data.session_id;
+                    try {
+                        localStorage.setItem(SESSION_KEY, sessionId);
+                    } catch (e) {
+                        /* storage blocked: the session just won't survive a reload */
+                    }
+                }
                 
                 // Hide typing indicator
                 hideTypingIndicator();
@@ -682,12 +715,15 @@ Responsive breakpoints: 480px, 768px, 1200px
                 
             } catch (error) {
                 hideTypingIndicator();
-                addMessage('Sorry, I encountered an error connecting to the IUFP AI service. Please try again in a moment, or visit www.iufp.org.uk for direct assistance.', 'bot');
+                addMessage(error.userMessage || 'Sorry, I encountered an error connecting to the IUFP AI service. Please try again in a moment, or visit www.iufp.org.uk for direct assistance.', 'bot');
                 console.error('Chat error:', error);
             }
             
-            // Re-enable send button
+            // Re-enable input
+            isSending = false;
             sendButton.disabled = false;
+            messageInput.disabled = false;
+            messageInput.focus();
         }
 
         function escapeHtml(text) {
