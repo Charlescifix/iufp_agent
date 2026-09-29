@@ -60,7 +60,8 @@ python -m src.ingest --prune     # also remove documents deleted from S3
 ```
 
 Unchanged documents are skipped, so routine runs cost nothing. Edited documents are replaced
-atomically.
+atomically. After changing how documents are split (`MAX_CHUNK_SIZE`, `CHUNK_OVERLAP` or the chunker
+code), run once with `--force` so every document is re-chunked (under $0.01 for the current guides).
 
 ## Running locally
 

@@ -223,9 +223,15 @@ class DocumentChunker:
                     if pos > best_break:
                         best_break = pos
 
-                if best_break > 100:  # Only break if we found a good spot
+                if best_break > 0:
                     # Keep everything up to and including the sentence terminator
                     chunk_text = chunk_text[:window_start + best_break + 1]
+                else:
+                    # No sentence end nearby: break at a space so words and figures
+                    # (e.g. "£776") are never split across chunks
+                    last_space = last_part.rfind(' ')
+                    if last_space > 0:
+                        chunk_text = chunk_text[:window_start + last_space]
 
             if chunk_text.strip():
                 chunks.append(chunk_text.strip())

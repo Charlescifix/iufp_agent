@@ -267,14 +267,13 @@ class S3IngestionService:
                 filename = self._sanitize_filename(os.path.basename(s3_key))
                 local_path = os.path.join("data", "raw", filename)
                 
-                # Check if file already exists and is up to date
-                should_download = force_redownload
-                if not should_download and os.path.exists(local_path):
-                    # Compare file modification times or ETags
+                # Download when forced, when there is no local copy yet, or when S3 is newer
+                if force_redownload or not os.path.exists(local_path):
+                    should_download = True
+                else:
                     # Compare in UTC; S3 timestamps are UTC-aware, local mtimes are epoch seconds
                     local_mtime = datetime.fromtimestamp(os.path.getmtime(local_path), tz=timezone.utc)
-                    s3_mtime = obj['last_modified']
-                    should_download = s3_mtime > local_mtime
+                    should_download = obj['last_modified'] > local_mtime
                 
                 if should_download:
                     try:
