@@ -157,8 +157,8 @@ class S3IngestionService:
             for page in page_iterator:
                 if 'Contents' in page:
                     for obj in page['Contents']:
-                        # Only include PDF files
-                        if obj['Key'].lower().endswith('.pdf'):
+                        # Only include PDF and text files
+                        if obj['Key'].lower().endswith(('.pdf', '.txt')):
                             objects.append({
                                 'key': obj['Key'],
                                 'size': obj['Size'],
