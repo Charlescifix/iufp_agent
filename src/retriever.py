@@ -37,6 +37,11 @@ class RetrievalConfig:
     # Absolute cosine similarity a chunk needs to count as being about the question,
     # judged before the max_results cut so a weak chunk can't take a good one's slot
     min_vector_score: float = settings.min_relevance_score
+    # A chunk matching a rare query term (summed IDF >= 3.5, i.e. a word in ~2 of 77
+    # chunks, such as a person's name) is judged against a lower similarity floor:
+    # short "Who is X?" questions embed far from the long table chunk that answers them
+    keyword_rescue_min_score: float = 3.5
+    keyword_rescue_min_vector_score: float = 0.2
     enable_reranking: bool = True
 
 
@@ -243,7 +248,9 @@ class HybridRetriever:
         # absolute similarity, not the per-query normalised score.
         candidate_count = len(combined_results)
         combined_results = [r for r in combined_results
-                            if r['vector_score'] >= config.min_vector_score]
+                            if r['vector_score'] >= config.min_vector_score
+                            or (r['bm25_score'] >= config.keyword_rescue_min_score
+                                and r['vector_score'] >= config.keyword_rescue_min_vector_score)]
         below_relevance = candidate_count - len(combined_results)
 
         # Normalize scores separately
