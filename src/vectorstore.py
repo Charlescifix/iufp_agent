@@ -601,25 +601,42 @@ class PostgreSQLVectorStore:
 
     @run_in_thread
     def fts_search(self, query: str, limit: int = 10) -> List[Dict]:
-        """Perform full-text search using PostgreSQL tsvector/ts_rank (no in-memory index)."""
+        """Perform full-text search using PostgreSQL tsvector (no in-memory index).
+
+        Matches chunks containing any query term and ranks them by the summed IDF of
+        the terms they contain, so a rare word like "Dentistry" outweighs common ones.
+        plainto_tsquery ANDs every term, which misses chunks lacking a filler word."""
         log_function_call(self.logger, "fts_search", query_length=len(query), limit=limit)
 
         try:
             with self.SessionLocal() as session:
                 sql = text("""
+                    WITH query_terms AS (
+                        SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('english', :query))) AS lexeme
+                    ),
+                    term_weights AS (
+                        SELECT stat.word AS lexeme,
+                               ln(1 + (SELECT count(*) FROM document_chunks)::float / stat.ndoc) AS idf
+                        FROM ts_stat('SELECT to_tsvector(''english'', text) FROM document_chunks') AS stat
+                        JOIN query_terms ON query_terms.lexeme = stat.word
+                    ),
+                    scores AS (
+                        SELECT dc.chunk_id, SUM(tw.idf) AS rank
+                        FROM document_chunks dc
+                        JOIN term_weights tw
+                          ON tw.lexeme = ANY(tsvector_to_array(to_tsvector('english', dc.text)))
+                        GROUP BY dc.chunk_id
+                    )
                     SELECT
-                        chunk_id,
-                        document_id,
-                        document_name,
-                        text,
-                        chunk_metadata,
-                        ts_rank_cd(
-                            to_tsvector('english', text),
-                            plainto_tsquery('english', :query)
-                        ) AS rank
-                    FROM document_chunks
-                    WHERE to_tsvector('english', text) @@ plainto_tsquery('english', :query)
-                    ORDER BY rank DESC
+                        dc.chunk_id,
+                        dc.document_id,
+                        dc.document_name,
+                        dc.text,
+                        dc.chunk_metadata,
+                        scores.rank
+                    FROM scores
+                    JOIN document_chunks dc ON dc.chunk_id = scores.chunk_id
+                    ORDER BY scores.rank DESC
                     LIMIT :limit
                 """)
 

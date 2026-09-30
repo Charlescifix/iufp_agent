@@ -28,8 +28,10 @@ class RetrievalResult:
 @dataclass
 class RetrievalConfig:
     """Configuration for hybrid retrieval"""
-    vector_weight: float = 0.7
-    bm25_weight: float = 0.3
+    # Equal weights: the IDF keyword score is what surfaces exact names (e.g. a degree
+    # in a long list) whose chunk embeds too diffusely to win on similarity alone
+    vector_weight: float = 0.5
+    bm25_weight: float = 0.5
     max_results: int = 10
     min_score_threshold: float = 0.1
     # Absolute cosine similarity a chunk needs to count as being about the question,

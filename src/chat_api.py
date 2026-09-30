@@ -447,9 +447,7 @@ CONTEXT:
             
             # Retrieve relevant context
             retrieval_config = RetrievalConfig(
-                max_results=request.max_results or settings.max_retrieval_results,
-                vector_weight=0.7,
-                bm25_weight=0.3
+                max_results=request.max_results or settings.max_retrieval_results
             )
             
             search_results = []
